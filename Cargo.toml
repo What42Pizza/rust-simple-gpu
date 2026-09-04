@@ -1,0 +1,23 @@
+[package]
+name = "simple-gpu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wgpu = "30.*"
+raw-window-handle = "0.6.*"
+pollster = "1.*"
+anyhow = "1.*"
+bytemuck = "1.*"
+image = { version = "0.25.*", optional = true }
+
+[features]
+default = ["glsl", "image"]
+glsl = ["wgpu/glsl"]
+image = ["dep:image"]
+
+[dev-dependencies]
+sdl3 = { version = "0.18.*", features = ["raw-window-handle"] }
+env_logger = "0.11.*"
+glam = { version = "0.33.*", features = ["bytemuck"] }
+log = "0.4.*"
