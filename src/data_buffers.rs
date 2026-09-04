@@ -1,10 +1,10 @@
 use crate::GpuInstance;
-use std::{marker::PhantomData};
+use std::marker::PhantomData;
 
 
 
 /// Holds the data for the vertices of a mesh, or the instances of mesh
-pub struct VertexInputBuffer<VertexRawData: BufferItemRawData> {
+pub struct VertexBuffer<VertexRawData: BufferItemRawData> {
 	/// A handle to the gpu buffer
 	pub wgpu_buffer: wgpu::Buffer,
 	/// The number of vertices this can hold. The actual size of the wgpu buffer is `self.count * size_of::<VertexRawData>()`
@@ -16,15 +16,21 @@ pub struct VertexInputBuffer<VertexRawData: BufferItemRawData> {
 }
 
 /// Creates a new vertex buffer. Note: the byte size of the resulting wgpu buffer is `count * size_of::<VertexRawData>()`
-pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(name: impl Into<String>, vertex_count: u64, gpu_instance: &GpuInstance) -> VertexInputBuffer<VertexRawData> {
+pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(
+	name: impl Into<String>,
+	vertex_count: u64,
+	gpu_instance: &GpuInstance,
+) -> VertexBuffer<VertexRawData> {
 	let name = name.into();
-	let buffer = gpu_instance.wgpu_device.create_buffer(&wgpu::BufferDescriptor {
-		label: Some(&name),
-		size: vertex_count * std::mem::size_of::<VertexRawData>() as u64,
-		usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-		mapped_at_creation: false,
-	});
-	VertexInputBuffer {
+	let buffer = gpu_instance
+		.wgpu_device
+		.create_buffer(&wgpu::BufferDescriptor {
+			label: Some(&name),
+			size: vertex_count * std::mem::size_of::<VertexRawData>() as u64,
+			usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+			mapped_at_creation: false,
+		});
+	VertexBuffer {
 		wgpu_buffer: buffer,
 		count: vertex_count,
 		name,
@@ -33,19 +39,33 @@ pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(name: impl Into<St
 }
 
 /// Reallocates the wgpu buffer, but does not copy the previous data
-pub fn resize_vertex_buffer<VertexRawData: BufferItemRawData>(vertex_buffer: &mut VertexInputBuffer<VertexRawData>, new_vertex_count: u64, gpu_instance: &GpuInstance) {
-	vertex_buffer.wgpu_buffer = gpu_instance.wgpu_device.create_buffer(&wgpu::BufferDescriptor {
-		label: Some(&vertex_buffer.name),
-		size: new_vertex_count * std::mem::size_of::<VertexRawData>() as u64,
-		usage: vertex_buffer.wgpu_buffer.usage(),
-		mapped_at_creation: false,
-	});
+pub fn resize_vertex_buffer<VertexRawData: BufferItemRawData>(
+	vertex_buffer: &mut VertexBuffer<VertexRawData>,
+	new_vertex_count: u64,
+	gpu_instance: &GpuInstance,
+) {
+	vertex_buffer.wgpu_buffer = gpu_instance
+		.wgpu_device
+		.create_buffer(&wgpu::BufferDescriptor {
+			label: Some(&vertex_buffer.name),
+			size: new_vertex_count * std::mem::size_of::<VertexRawData>() as u64,
+			usage: vertex_buffer.wgpu_buffer.usage(),
+			mapped_at_creation: false,
+		});
 	vertex_buffer.count = new_vertex_count;
 }
 
 /// Replaces the data in a vertex buffer
-pub fn update_vertex_buffer<VertexRawData: BufferItemRawData>(vertex_buffer: &mut VertexInputBuffer<VertexRawData>, new_data: &[VertexRawData], gpu_instance: &GpuInstance) {
-	gpu_instance.wgpu_queue.write_buffer(&vertex_buffer.wgpu_buffer, 0, bytemuck::cast_slice(new_data));
+pub fn update_vertex_buffer<VertexRawData: BufferItemRawData>(
+	vertex_buffer: &mut VertexBuffer<VertexRawData>,
+	new_data: &[VertexRawData],
+	gpu_instance: &GpuInstance,
+) {
+	gpu_instance.wgpu_queue.write_buffer(
+		&vertex_buffer.wgpu_buffer,
+		0,
+		bytemuck::cast_slice(new_data),
+	);
 }
 
 
@@ -61,14 +81,20 @@ pub struct IndexBuffer {
 }
 
 /// Creates a new index buffer
-pub fn create_index_buffer(name: impl Into<String>, index_count: u32, gpu_instance: &GpuInstance) -> IndexBuffer {
+pub fn create_index_buffer(
+	name: impl Into<String>,
+	index_count: u32,
+	gpu_instance: &GpuInstance,
+) -> IndexBuffer {
 	let name = name.into();
-	let buffer = gpu_instance.wgpu_device.create_buffer(&wgpu::BufferDescriptor {
-		label: Some(&name),
-		size: u64::from(index_count) * 2,
-		usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-		mapped_at_creation: false,
-	});
+	let buffer = gpu_instance
+		.wgpu_device
+		.create_buffer(&wgpu::BufferDescriptor {
+			label: Some(&name),
+			size: u64::from(index_count) * 2,
+			usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+			mapped_at_creation: false,
+		});
 	IndexBuffer {
 		wgpu_buffer: buffer,
 		count: index_count,
@@ -77,27 +103,41 @@ pub fn create_index_buffer(name: impl Into<String>, index_count: u32, gpu_instan
 }
 
 /// Reallocates the wgpu buffer, but does not copy the previous data
-pub fn resize_index_buffer(index_buffer: &mut IndexBuffer, new_index_count: u32, gpu_instance: &GpuInstance) {
-	index_buffer.wgpu_buffer = gpu_instance.wgpu_device.create_buffer(&wgpu::BufferDescriptor {
-		label: Some(&index_buffer.name),
-		size: u64::from(new_index_count) * 2,
-		usage: index_buffer.wgpu_buffer.usage(),
-		mapped_at_creation: false,
-	});
+pub fn resize_index_buffer(
+	index_buffer: &mut IndexBuffer,
+	new_index_count: u32,
+	gpu_instance: &GpuInstance,
+) {
+	index_buffer.wgpu_buffer = gpu_instance
+		.wgpu_device
+		.create_buffer(&wgpu::BufferDescriptor {
+			label: Some(&index_buffer.name),
+			size: u64::from(new_index_count) * 2,
+			usage: index_buffer.wgpu_buffer.usage(),
+			mapped_at_creation: false,
+		});
 	index_buffer.count = new_index_count;
 }
 
 /// Replaces the data in a vertex buffer
-pub fn update_index_buffer(index_buffer: &mut IndexBuffer, new_data: &[u16], gpu_instance: &GpuInstance) {
-	gpu_instance.wgpu_queue.write_buffer(&index_buffer.wgpu_buffer, 0, bytemuck::cast_slice(new_data));
+pub fn update_index_buffer(
+	index_buffer: &mut IndexBuffer,
+	new_data: &[u16],
+	gpu_instance: &GpuInstance,
+) {
+	gpu_instance.wgpu_queue.write_buffer(
+		&index_buffer.wgpu_buffer,
+		0,
+		bytemuck::cast_slice(new_data),
+	);
 }
 
 
 
 /// Represents a type that can be put in a `VertexBuffer` or `InstanceBuffer`
-/// 
+///
 /// Example usage:
-/// 
+///
 /// ```
 /// #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 /// #[repr(C)]
@@ -106,7 +146,7 @@ pub fn update_index_buffer(index_buffer: &mut IndexBuffer, new_data: &[u16], gpu
 ///     pub uv: [f32; 2],
 ///     pub color: [f32; 4],
 /// }
-/// 
+///
 /// impl simple_gpu::BufferItemRawData for VertexRawData {
 ///     // specifies the fields that VertexRawData has
 ///     const FIELDS: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
