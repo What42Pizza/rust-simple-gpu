@@ -41,7 +41,7 @@ pub fn create_2d_pipeline(
 		})
 }
 
-/// Creates a basic 3d rendering pipeline, with back-face culling, counter-clockwise triangles, a 32-bit float depth buffer expected, and the vertex list treated as a triangles list
+/// Creates a basic 3d rendering pipeline with back-face culling, counter-clockwise triangles, a 24-bit float depth buffer expected, and the vertex list treated as a triangles list
 #[must_use]
 pub fn create_3d_pipeline(
 	name: &str,
@@ -82,7 +82,7 @@ pub fn create_3d_pipeline(
 				conservative: false,
 			},
 			depth_stencil: Some(wgpu::DepthStencilState {
-				format: wgpu::TextureFormat::Depth32Float,
+				format: wgpu::TextureFormat::Depth24Plus,
 				depth_write_enabled: Some(true),
 				depth_compare: Some(wgpu::CompareFunction::Less),
 				stencil: wgpu::StencilState::default(),

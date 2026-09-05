@@ -10,20 +10,48 @@ keywords = [ "gpu", "wgpu", "simple", "rendering", "graphics" ]
 categories = [ "multimedia", "rendering", "rendering::graphics-api", "graphics", "game-development" ]
 
 [dependencies]
-wgpu = "30.*"
-raw-window-handle = "0.6.*"
-pollster = "1.*"
-anyhow = "1.*"
-bytemuck = "1.*"
-image = { version = "0.25.*", optional = true }
+wgpu = {
+	version = "30.*",
+	default-features = false,
+	features = [ "std", "dx12", "metal", "gles", "vulkan" ],
+}
+raw-window-handle = {
+	version = "0.6.*",
+	default-features = false,
+}
+pollster = {
+	version = "1.*",
+	default-features = false,
+}
+anyhow = {
+	version = "1.*",
+	default-features = false,
+	}
+bytemuck = {
+	version = "1.*",
+	default-features = false,
+}
+image = {
+	version = "0.25.*",
+	optional = true,
+	default-features = false,
+	features = [ "png", "jpeg", "webp", "bmp", "tga" ],
+}
 
 [features]
 default = [ "glsl", "image" ]
 glsl = [ "wgpu/glsl" ]
+wgsl = [ "wgpu/wgsl" ]
 image = [ "dep:image" ]
 
 [dev-dependencies]
-sdl3 = { version = "0.18.*", features = [ "raw-window-handle", "build-from-source" ] }
+sdl3 = {
+	version = "0.18.*",
+	features = [ "raw-window-handle", "build-from-source" ],
+}
 env_logger = "0.11.*"
-glam = { version = "0.33.*", features = [ "bytemuck" ] }
+glam = {
+	version = "0.33.*",
+	features = [ "bytemuck" ],
+}
 log = "0.4.*"

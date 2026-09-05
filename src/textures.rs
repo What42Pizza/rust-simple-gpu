@@ -15,9 +15,7 @@ pub struct Texture {
 	pub wgpu_texture: wgpu::Texture,
 	/// Can be given to bind groups, which are then bound to the render pipeline
 	pub wgpu_view: wgpu::TextureView,
-	/// Can be given to bind groups, and specifies how the texture is sampled. The first is a filtering sampler, and the second is non-filtering
-	pub wgpu_samplers: (wgpu::Sampler, wgpu::Sampler),
-	/// This is a bind group with just one binding, which is a view to this texture. The layout for this is taken from `gpu_instance.wgpu_texture_bind_group_layout`
+	/// This is a bind group with just one binding, which is a view to this texture. The layout for this is taken from [`GpuInstance::wgpu_texture_bind_group_layout`]
 	pub wgpu_bind_group: wgpu::BindGroup,
 	/// Specifies the format of the texture's texels (aka pixels)
 	pub wgpu_format: wgpu::TextureFormat,
@@ -25,8 +23,7 @@ pub struct Texture {
 
 /// Creates a new texture with a given size and format. More:
 ///
-/// - If `is_filtered` is true, the sampler and bind group will be set created with bilinear filtering enabled (and no filtering if false)'
-/// - If `is_render_target` is true, `wgpu::TextureUsages::RENDER_ATTACHMENT` is given instead of `wgpu::TextureUsages::COPY_DST`
+/// - If `is_render_target` is true, [`wgpu::TextureUsages::RENDER_ATTACHMENT`] is given instead of [`wgpu::TextureUsages::COPY_DST`], and [`wgpu::TextureUsages::TEXTURE_BINDING`] is always given
 #[must_use]
 #[inline]
 pub fn create_texture(
@@ -59,17 +56,6 @@ pub fn create_texture(
 
 	let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-	let filtering_sampler = make_sampler(
-		wgpu::AddressMode::ClampToEdge,
-		wgpu::FilterMode::Linear,
-		gpu_instance,
-	);
-	let non_filtering_sampler = make_sampler(
-		wgpu::AddressMode::ClampToEdge,
-		wgpu::FilterMode::Nearest,
-		gpu_instance,
-	);
-
 	let bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -82,11 +68,13 @@ pub fn create_texture(
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&filtering_sampler),
+					resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_filtering_sampler),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: wgpu::BindingResource::Sampler(&non_filtering_sampler),
+					resource: wgpu::BindingResource::Sampler(
+						&gpu_instance.wgpu_non_filtering_sampler,
+					),
 				},
 			],
 		});
@@ -94,7 +82,6 @@ pub fn create_texture(
 	Texture {
 		wgpu_texture: texture,
 		wgpu_view: view,
-		wgpu_samplers: (filtering_sampler, non_filtering_sampler),
 		wgpu_bind_group: bind_group,
 		wgpu_format: format,
 	}
@@ -104,7 +91,7 @@ pub fn create_texture(
 #[must_use]
 #[inline]
 pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInstance) -> Texture {
-	let format = wgpu::TextureFormat::Depth32Float;
+	let format = wgpu::TextureFormat::Depth24Plus;
 
 	let texture = gpu_instance
 		.wgpu_device
@@ -125,17 +112,6 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInst
 
 	let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-	let filtering_sampler = make_sampler(
-		wgpu::AddressMode::ClampToEdge,
-		wgpu::FilterMode::Linear,
-		gpu_instance,
-	);
-	let non_filtering_sampler = make_sampler(
-		wgpu::AddressMode::ClampToEdge,
-		wgpu::FilterMode::Nearest,
-		gpu_instance,
-	);
-
 	let bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -148,11 +124,13 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInst
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&filtering_sampler),
+					resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_filtering_sampler),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: wgpu::BindingResource::Sampler(&non_filtering_sampler),
+					resource: wgpu::BindingResource::Sampler(
+						&gpu_instance.wgpu_non_filtering_sampler,
+					),
 				},
 			],
 		});
@@ -160,7 +138,6 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInst
 	Texture {
 		wgpu_texture: texture,
 		wgpu_view: view,
-		wgpu_samplers: (filtering_sampler, non_filtering_sampler),
 		wgpu_bind_group: bind_group,
 		wgpu_format: format,
 	}
@@ -196,12 +173,13 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 
 /// Creates a texture from a given file path. More:
 ///
-/// - The result always uses the format `wgpu::TextureFormat::Rgba8Unorm`.
-/// - If `is_filtered` is true, the sampler and bind group will be set created with bilinear filtering enabled (and no filtering if false)'
+/// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`].
+/// - This is only available when the "image" feature is enabled
+/// - By default, only png, jpeg, webp, bmp, and tga formats are enabled. If needed, you can enable more image formats by adding this to your Cargo.toml: `image = { version = "...", features = [ .. ] }` (note: it needs to be the same version that this crate uses for the features to combine)
 ///
 /// # Errors
 ///
-/// This only errors if it fails to read the file
+/// This errors if [`image::open()`] errors or if it cannot get the file name from the path
 #[cfg(feature = "image")]
 pub fn load_texture_from_path(path: &Path, gpu_instance: &GpuInstance) -> Result<Texture> {
 	let texture_image =
@@ -223,21 +201,19 @@ pub fn load_texture_from_path(path: &Path, gpu_instance: &GpuInstance) -> Result
 
 
 
-/// Creates a basic `wgpu::Sampler` with a specified wrapping mode and filtering mode
+/// Creates a basic [`wgpu::Sampler`] with a specified wrapping mode and filtering mode
 #[must_use]
 pub fn make_sampler(
 	wrapping: wgpu::AddressMode,
 	filter: wgpu::FilterMode,
-	gpu_instance: &GpuInstance,
+	wgpu_device: &wgpu::Device,
 ) -> wgpu::Sampler {
-	gpu_instance
-		.wgpu_device
-		.create_sampler(&wgpu::SamplerDescriptor {
-			address_mode_u: wrapping,
-			address_mode_v: wrapping,
-			address_mode_w: wrapping,
-			mag_filter: filter,
-			min_filter: filter,
-			..Default::default()
-		})
+	wgpu_device.create_sampler(&wgpu::SamplerDescriptor {
+		address_mode_u: wrapping,
+		address_mode_v: wrapping,
+		address_mode_w: wrapping,
+		mag_filter: filter,
+		min_filter: filter,
+		..Default::default()
+	})
 }

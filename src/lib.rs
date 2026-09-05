@@ -1,10 +1,14 @@
 #![warn(clippy::all, clippy::nursery, clippy::pedantic)]
 #![warn(missing_docs)]
 #![allow(clippy::option_if_let_else)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::large_enum_variant)]
 
 //! # Simple Gpu
 //!
-//! This is an abstraction over WGPU that aims to be an excellent balance between control and convenience. allows you to render whatever data you want with whatever shaders you want in the most simple way possible.
+//! This is a tiny abstraction over WGPU that is inspired by the simplicity and directness of multimedia libraries like raylib and SDL. The main goal of this crate is to provide a simple and convenient way of rendering custom data with custom shaders.
+//! 
+//! ## See the [example program](https://github.com/What42Pizza/rust-simple-gpu/blob/main/examples/basic.rs)
 
 
 
@@ -29,10 +33,50 @@ pub use data_buffers::*;
 pub mod pipelines;
 pub use pipelines::*;
 /// Utilities for loading shaders
-#[cfg(feature = "glsl")]
-pub mod shaders_glsl;
-#[cfg(feature = "glsl")]
-pub use shaders_glsl::*;
+pub mod shaders;
+pub use shaders::*;
+
+
+
+/// Holds everything needed for simple wgpu functionality
+pub struct GpuInstance {
+	/// This is for retrieving the adapter and window surface
+	pub wgpu_instance: wgpu::Instance,
+	/// This is for querying data about the gpu
+	pub wgpu_adapter: wgpu::Adapter,
+	/// This is the gpu's interface, allowing you to create buffers, register shaders, etc
+	pub wgpu_device: wgpu::Device,
+	/// This is where you send the commands for the gpu to execute
+	pub wgpu_queue: wgpu::Queue,
+	/// This is just a basic sampler with bilinear filtering and coordinate clamping enabled
+	pub wgpu_filtering_sampler: wgpu::Sampler,
+	/// This is just a basic sampler with filtering disabled and coordinate clamping enabled
+	pub wgpu_non_filtering_sampler: wgpu::Sampler,
+	/// This specifies the layout for the uniforms bind group. More:
+	///
+	/// - Binding 0: buffer (type: uniforms)
+	pub wgpu_uniforms_bind_group_layout: wgpu::BindGroupLayout,
+	/// This specifies the layout for each texture's bind group. More:
+	///
+	/// - Binding 0: texture view
+	/// - Binding 1: texture sampler (filtering)
+	/// - Binding 2: texture sampler (non-filtering)
+	pub wgpu_texture_bind_group_layout: wgpu::BindGroupLayout,
+	/// This specifies the layout for each depth texture's bind group. More:
+	///
+	/// - Binding 0: texture view
+	/// - Binding 1: texture sampler (filtering)
+	/// - Binding 2: texture sampler (non-filtering)
+	pub wgpu_depth_texture_bind_group_layout: wgpu::BindGroupLayout,
+	/// This is the default pipeline layout used to render everything. More:
+	///
+	/// - Its bindings are:
+	/// - Bind group 0 binding 0: buffer (type: uniforms)
+	/// - Bind group 1 binding 0: texture view
+	/// - Bind group 1 binding 1: texture sampler (filtering)
+	/// - Bind group 1 binding 2: texture sampler (non-filtering)
+	pub wgpu_pipeline_layout: wgpu::PipelineLayout,
+}
 
 
 
@@ -42,7 +86,7 @@ pub use shaders_glsl::*;
 ///
 /// This returns an error if [`wgpu::Instance::request_adapter()`] errors or if [`wgpu::Adapter::request_device()`] errors
 #[inline]
-pub fn init() -> Result<GpuInstance> {
+pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<GpuInstance> {
 	let wgpu_instance =
 		wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
 
@@ -52,12 +96,23 @@ pub fn init() -> Result<GpuInstance> {
 	let (wgpu_device, wgpu_queue) =
 		pollster::block_on(wgpu_adapter.request_device(&wgpu::DeviceDescriptor {
 			label: Some("main wgpu device"),
-			required_limits: wgpu::Limits::default(),
+			required_limits: min_limits,
 			required_features: wgpu::Features::empty(),
-			memory_hints: wgpu::MemoryHints::Performance,
+			memory_hints: memory_hint,
 			experimental_features: wgpu::ExperimentalFeatures::disabled(),
 			trace: wgpu::Trace::Off,
 		}))?;
+
+	let filtering_sampler = make_sampler(
+		wgpu::AddressMode::ClampToEdge,
+		wgpu::FilterMode::Linear,
+		&wgpu_device,
+	);
+	let non_filtering_sampler = make_sampler(
+		wgpu::AddressMode::ClampToEdge,
+		wgpu::FilterMode::Nearest,
+		&wgpu_device,
+	);
 
 	let uniforms_bind_group_layout =
 		wgpu_device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -152,6 +207,8 @@ pub fn init() -> Result<GpuInstance> {
 		wgpu_adapter,
 		wgpu_device,
 		wgpu_queue,
+		wgpu_filtering_sampler: filtering_sampler,
+		wgpu_non_filtering_sampler: non_filtering_sampler,
 		wgpu_uniforms_bind_group_layout: uniforms_bind_group_layout,
 		wgpu_texture_bind_group_layout: texture_bind_group_layout,
 		wgpu_depth_texture_bind_group_layout: depth_texture_bind_group_layout,
@@ -180,7 +237,7 @@ pub fn submit_gpu_commands(command_encoder: wgpu::CommandEncoder, gpu_instance: 
 
 
 
-/// Represents whether 1: a texture was retrieved, 2: no texture was given, or 3: there was an error requiring reconfiguring
+/// Represents whether A: a texture was retrieved, B: no texture was given, or C: there was an error requiring reconfiguring
 ///
 /// This is the same as [`SurfaceTextureResult`], but with a [`wgpu::CommandEncoder`] added to the [`Some`] variant
 pub enum StartFrameResult {
@@ -192,11 +249,11 @@ pub enum StartFrameResult {
 	),
 	/// Surface timed out or is occluded (no rendering is needed)
 	None,
-	/// Surface textured errored, requires `simple_gpu::reconfigure_window_surface()`
+	/// Surface textured errored and requires [`reconfigure_window_surface()`] to be called
 	Error,
 }
 
-/// Combines `get_surface_texture()` and `start_command_encoder()` into a single function
+/// Combines [`get_surface_texture()`] and [`start_command_encoder()`] into a single function
 #[must_use]
 #[inline]
 pub fn start_frame(
@@ -213,7 +270,7 @@ pub fn start_frame(
 	}
 }
 
-/// Combines `submit_gpu_commands()` and `present_frame()` into a single function
+/// Combines [`submit_gpu_commands()`] and [`present_frame()`] into a single function
 #[inline]
 pub fn finish_frame(
 	command_encoder: wgpu::CommandEncoder,
@@ -231,44 +288,6 @@ pub fn finish_frame(
 #[inline]
 pub fn get_gpu_limits(gpu_instance: &GpuInstance) -> wgpu::Limits {
 	gpu_instance.wgpu_adapter.limits()
-}
-
-
-
-/// Holds everything needed for wgpu functionality
-pub struct GpuInstance {
-	/// This is for retrieving the adapter and window surface
-	pub wgpu_instance: wgpu::Instance,
-	/// This is for querying data about the gpu
-	pub wgpu_adapter: wgpu::Adapter,
-	/// This is the gpu's interface, allowing you to create buffers, register shaders, etc
-	pub wgpu_device: wgpu::Device,
-	/// This is where you send the commands for the gpu to execute
-	pub wgpu_queue: wgpu::Queue,
-	/// This specifies the layout for the uniforms bind group. More:
-	///
-	/// - Binding 0: buffer (type: uniforms)
-	pub wgpu_uniforms_bind_group_layout: wgpu::BindGroupLayout,
-	/// This specifies the layout for each texture's bind group. More:
-	///
-	/// - Binding 0: texture view
-	/// - Binding 1: texture sampler (filtering)
-	/// - Binding 2: texture sampler (non-filtering)
-	pub wgpu_texture_bind_group_layout: wgpu::BindGroupLayout,
-	/// This specifies the layout for each depth texture's bind group. More:
-	///
-	/// - Binding 0: texture view
-	/// - Binding 1: texture sampler (filtering)
-	/// - Binding 2: texture sampler (non-filtering)
-	pub wgpu_depth_texture_bind_group_layout: wgpu::BindGroupLayout,
-	/// This is the default pipeline layout used to render everything. More:
-	///
-	/// - Its bindings are:
-	/// - Bind group 0 binding 0: buffer (type: uniforms)
-	/// - Bind group 1 binding 0: texture view
-	/// - Bind group 1 binding 1: texture sampler (filtering)
-	/// - Bind group 1 binding 2: texture sampler (non-filtering)
-	pub wgpu_pipeline_layout: wgpu::PipelineLayout,
 }
 
 

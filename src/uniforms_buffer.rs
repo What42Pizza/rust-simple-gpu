@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 pub struct UniformsBuffer<UniformsRawData> {
 	/// A handle to the gpu buffer
 	pub wgpu_buffer: wgpu::Buffer,
-	/// This is a bind group with just one binding, which is a link to this struct's `wgpu::Buffer`. The layout for this is taken from `gpu_instance.wgpu_uniforms_bind_group_layout`
+	/// This is a bind group with just one binding, which is a link to this struct's [`wgpu::Buffer`]. The layout for this is taken from [`GpuInstance::wgpu_uniforms_bind_group_layout`]
 	pub wgpu_bind_group: wgpu::BindGroup,
 	#[doc(hidden)]
 	pub _phantom: PhantomData<UniformsRawData>,

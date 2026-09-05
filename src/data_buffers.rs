@@ -26,7 +26,7 @@ pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&name),
-			size: item_count as u64 * std::mem::size_of::<VertexRawData>() as u64,
+			size: u64::from(item_count) * std::mem::size_of::<VertexRawData>() as u64,
 			usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
@@ -48,7 +48,7 @@ pub fn resize_vertex_buffer<VertexRawData: BufferItemRawData>(
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&vertex_buffer.name),
-			size: new_vertex_count as u64 * std::mem::size_of::<VertexRawData>() as u64,
+			size: u64::from(new_vertex_count) * std::mem::size_of::<VertexRawData>() as u64,
 			usage: vertex_buffer.wgpu_buffer.usage(),
 			mapped_at_creation: false,
 		});
@@ -134,7 +134,7 @@ pub fn update_index_buffer(
 
 
 
-/// Represents a type that can be put in a `VertexBuffer` or `InstanceBuffer`
+/// Represents a type that can be put in a [`VertexBuffer`], and can be used for either vertex datas or instance datas
 ///
 /// Example usage:
 ///
@@ -163,7 +163,7 @@ pub trait BufferItemRawData: bytemuck::Pod {
 	const FIELDS: &[wgpu::VertexAttribute];
 	/// Defines if this is a vertex type or an instance type
 	const STEP_MODE: wgpu::VertexStepMode;
-	/// Lists this as a `wgpu::VertexBufferLayout` (note: this is automatically generated!)
+	/// Lists this as a [`wgpu::VertexBufferLayout`] (note: this is automatically generated!)
 	const BUFFER_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
 		array_stride: std::mem::size_of::<Self>() as u64,
 		step_mode: Self::STEP_MODE,

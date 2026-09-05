@@ -9,10 +9,12 @@
 		"raylib",
 		"scancode",
 		"srgb",
+		"Texel",
 		"texels",
 		"unclipped",
 		"Unorm",
 		"wgpu",
+		"wgsl",
 		"Zeroable"
 	]
 }

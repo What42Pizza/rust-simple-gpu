@@ -34,13 +34,13 @@ pub fn reconfigure_window_surface(
 		.configure(&gpu_instance.wgpu_device, &surface.wgpu_config);
 }
 
-/// Represents whether 1: a texture was retrieved, 2: no texture was given, or 3: there was an error requiring reconfiguring
+/// Represents whether A: a texture was retrieved, B: no texture was given, or C: there was an error requiring reconfiguring
 pub enum SurfaceTextureResult {
 	/// Surface texture was successfully acquired
 	Some(wgpu::SurfaceTexture, wgpu::TextureView),
 	/// Surface timed out or is occluded (no rendering is needed)
 	None,
-	/// Surface textured errored, requires `simple_gpu::reconfigure_window_surface()`
+	/// Surface textured errored and requires [`reconfigure_window_surface()`] to be called
 	Error,
 }
 
@@ -70,7 +70,11 @@ pub fn present_frame(surface_tex: wgpu::SurfaceTexture, gpu_instance: &GpuInstan
 
 
 
-/// Similar to `get_window_surface()`, but allows you to mutate the window after creating the surface
+/// Similar to [`get_window_surface()`], but allows you to mutate the window after creating the surface
+/// 
+/// # Errors
+///
+/// This returns an error if it fails to retrieve the window handles, and it always returns the mutable window reference 
 #[inline]
 pub fn get_window_surface_mut<'a, T: HasDisplayHandle + HasWindowHandle>(
 	gpu_instance: &GpuInstance,
@@ -95,9 +99,9 @@ pub fn get_window_surface_mut<'a, T: HasDisplayHandle + HasWindowHandle>(
 	(window, surface)
 }
 
-/// Creates a `wgpu::Surface` (and other related structs) using the window.
+/// Creates a [`wgpu::Surface`] (and other related structs) using the window.
 ///
-/// It should be noted that you cannot mutate the window after calling this, so if that is needed then you should use `get_window_surface_mut()` instead
+/// It should be noted that you cannot mutate the window after calling this, so if that is needed then you should use [`get_window_surface_mut()`] instead
 ///
 /// # Errors
 ///
@@ -120,11 +124,11 @@ pub fn get_window_surface<'a, T: HasDisplayHandle + HasWindowHandle>(
 
 
 
-/// Creates a `wgpu::Surface` (and other related structs) using a window's raw handles
+/// Creates a [`wgpu::Surface`] (and other related structs) using a window's raw handles
 ///
 /// # Errors
 ///
-/// This returns an error only if `wgpu::Instance::create_surface()` errors
+/// This returns an error only if [`wgpu::Instance::create_surface()`] errors
 ///
 /// # Panics
 ///

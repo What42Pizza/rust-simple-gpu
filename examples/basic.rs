@@ -58,7 +58,7 @@ impl UniformsRawData {
 struct ProgramData {
 	should_quit: bool,
 	last_dt_instant: Instant,
-	
+
 	camera: CameraData,
 	aspect_ratio: f32,
 
@@ -144,7 +144,7 @@ fn main() -> Result<()> {
 	let mut event_pump = sdl.event_pump()?;
 
 	// basics
-	let gpu_instance = simple_gpu::init()?;
+	let gpu_instance = simple_gpu::init(wgpu::Limits::defaults(), wgpu::MemoryHints::Performance)?;
 	let (window, window_surface) = simple_gpu::get_window_surface_mut(
 		&gpu_instance,
 		&mut window,
@@ -223,10 +223,10 @@ fn main() -> Result<()> {
 		&mut main_instance_buffer,
 		&[
 			InstanceData {
-				pos: [0.0, 0.0, -3.0],
+				pos: [0.5, 0.5, -2.5],
 			},
 			InstanceData {
-				pos: [0.5, 0.5, -2.5],
+				pos: [0.0, 0.0, -3.0],
 			},
 		],
 		&gpu_instance,
@@ -236,7 +236,7 @@ fn main() -> Result<()> {
 	let mut program_data = ProgramData {
 		should_quit: false,
 		last_dt_instant: Instant::now(),
-		
+
 		camera: CameraData {
 			pos: vec3(0.0, 0.0, 0.0),
 			rot_xz: -90.0f32.to_radians(),
@@ -255,15 +255,17 @@ fn main() -> Result<()> {
 		uniforms_buffer,
 	};
 
-	
-	
+
+
 	window.show();
-	'running: loop {
+	while !program_data.should_quit {
 		// initial update
 		let new_dt_instant = Instant::now();
-		let dt = new_dt_instant.duration_since(program_data.last_dt_instant).as_secs_f32();
+		let dt = new_dt_instant
+			.duration_since(program_data.last_dt_instant)
+			.as_secs_f32();
 		program_data.last_dt_instant = new_dt_instant;
-		
+
 		// handle events
 		for event in event_pump.poll_iter() {
 			match event {
@@ -295,7 +297,7 @@ fn main() -> Result<()> {
 					..
 				} => {
 					println!("closing");
-					break 'running;
+					program_data.should_quit = true;
 				}
 				e => {
 					info!("Unknown event: {e:?}");
