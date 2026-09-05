@@ -2,6 +2,12 @@
 name = "simple-gpu"
 version = "0.1.0"
 edition = "2024"
+license = "CC0-1.0"
+description = "An abstraction over WGPU inspired by the simplicity of multimedia libraries like raylib and sdl"
+repository = "https://github.com/What42Pizza/rust-simple-gpu"
+readme = "readme.md"
+keywords = [ "gpu", "wgpu", "simple", "rendering", "graphics" ]
+categories = [ "multimedia", "rendering", "rendering::graphics-api", "graphics", "game-development" ]
 
 [dependencies]
 wgpu = "30.*"
@@ -12,12 +18,12 @@ bytemuck = "1.*"
 image = { version = "0.25.*", optional = true }
 
 [features]
-default = ["glsl", "image"]
-glsl = ["wgpu/glsl"]
-image = ["dep:image"]
+default = [ "glsl", "image" ]
+glsl = [ "wgpu/glsl" ]
+image = [ "dep:image" ]
 
 [dev-dependencies]
-sdl3 = { version = "0.18.*", features = ["raw-window-handle"] }
+sdl3 = { version = "0.18.*", features = [ "raw-window-handle", "build-from-source" ] }
 env_logger = "0.11.*"
-glam = { version = "0.33.*", features = ["bytemuck"] }
+glam = { version = "0.33.*", features = [ "bytemuck" ] }
 log = "0.4.*"

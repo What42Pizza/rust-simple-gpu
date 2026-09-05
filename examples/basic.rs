@@ -1,24 +1,22 @@
 #![allow(unused)]
 #![warn(unused_must_use)]
 
+
+
 use anyhow::*;
 use bytemuck::Zeroable;
 use glam::{
-	Mat4, Quat, Vec3,
+	Mat4, Vec3,
 	camera::rh::{proj, view},
 	vec3,
 };
-use log::{info, warn};
+use log::info;
 use sdl3::{
 	event::{Event, WindowEvent},
-	keyboard::{self, Keycode},
+	keyboard::{KeyboardState, Keycode},
 };
 use simple_gpu::BufferItemRawData;
-use std::{
-	fs,
-	path::PathBuf,
-	time::{Duration, Instant},
-};
+use std::{path::PathBuf, time::Instant};
 
 
 
@@ -36,12 +34,11 @@ struct UniformsRawData {
 impl UniformsRawData {
 	fn update(&mut self, program_data: &ProgramData) {
 		let camera = &program_data.camera;
-		let camera_target = camera.pos
-			+ glam::Vec3::new(
-				camera.rot_xz.cos() * camera.rot_y.cos(),
-				camera.rot_y.sin(),
-				camera.rot_xz.sin() * camera.rot_y.cos(),
-			);
+		let camera_target = glam::Vec3::new(
+			camera.rot_xz.cos() * camera.rot_y.cos(),
+			camera.rot_y.sin(),
+			camera.rot_xz.sin() * camera.rot_y.cos(),
+		);
 		self.view_mat = view::look_to_mat4(camera.pos, camera_target, Vec3::new(0.0, 1.0, 0.0));
 		self.proj_mat = proj::opengl::perspective(
 			camera.fov_radians,
@@ -59,11 +56,15 @@ impl UniformsRawData {
 
 
 struct ProgramData {
+	should_quit: bool,
+	last_dt_instant: Instant,
+	
 	camera: CameraData,
 	aspect_ratio: f32,
 
 	main_vertex_buffer: simple_gpu::VertexBuffer<VertexData>,
 	main_index_buffer: simple_gpu::IndexBuffer,
+	main_instance_buffer: simple_gpu::VertexBuffer<InstanceData>,
 	textures: Textures,
 
 	uniforms_buffer: simple_gpu::UniformsBuffer<UniformsRawData>,
@@ -99,6 +100,21 @@ impl simple_gpu::BufferItemRawData for VertexData {
 		2 => Float32x4,
 	];
 	const STEP_MODE: wgpu::VertexStepMode = wgpu::VertexStepMode::Vertex;
+}
+
+
+
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+struct InstanceData {
+	pub pos: [f32; 3],
+}
+
+impl simple_gpu::BufferItemRawData for InstanceData {
+	const FIELDS: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
+		3 => Float32x3,
+	];
+	const STEP_MODE: wgpu::VertexStepMode = wgpu::VertexStepMode::Instance;
 }
 
 
@@ -158,7 +174,10 @@ fn main() -> Result<()> {
 	// pipeline
 	let main_pipeline = simple_gpu::create_3d_pipeline(
 		"main pipeline",
-		&[Some(VertexData::BUFFER_LAYOUT)],
+		&[
+			Some(VertexData::BUFFER_LAYOUT),
+			Some(InstanceData::BUFFER_LAYOUT),
+		],
 		&main_vsh_shader,
 		&main_fsh_shader,
 		&window_surface.wgpu_format,
@@ -167,27 +186,27 @@ fn main() -> Result<()> {
 
 	// vertex data
 	let mut main_vertex_buffer =
-		simple_gpu::create_vertex_buffer("main vertex buffer", 6, &gpu_instance);
+		simple_gpu::create_vertex_buffer("main vertex buffer", 4, &gpu_instance);
 	simple_gpu::update_vertex_buffer(
 		&mut main_vertex_buffer,
 		&[
 			VertexData {
-				pos: [1.0, 1.0, -3.0],
+				pos: [1.0, 1.0, 0.0],
 				uv: [1.0, 0.0],
 				color: [1.0; 4],
 			},
 			VertexData {
-				pos: [-1.0, 1.0, -3.0],
+				pos: [-1.0, 1.0, 0.0],
 				uv: [0.0, 0.0],
 				color: [1.0; 4],
 			},
 			VertexData {
-				pos: [1.0, -1.0, -3.0],
+				pos: [1.0, -1.0, 0.0],
 				uv: [1.0, 1.0],
 				color: [1.0; 4],
 			},
 			VertexData {
-				pos: [-1.0, -1.0, -3.0],
+				pos: [-1.0, -1.0, 0.0],
 				uv: [0.0, 1.0],
 				color: [1.0; 4],
 			},
@@ -195,11 +214,29 @@ fn main() -> Result<()> {
 		&gpu_instance,
 	);
 	let mut main_index_buffer =
-		simple_gpu::create_index_buffer("main vertex buffer", 6, &gpu_instance);
+		simple_gpu::create_index_buffer("main index buffer", 6, &gpu_instance);
 	simple_gpu::update_index_buffer(&mut main_index_buffer, &[0, 1, 2, 2, 1, 3], &gpu_instance);
+
+	let mut main_instance_buffer =
+		simple_gpu::create_vertex_buffer("main instance buffer", 2, &gpu_instance);
+	simple_gpu::update_vertex_buffer(
+		&mut main_instance_buffer,
+		&[
+			InstanceData {
+				pos: [0.0, 0.0, -3.0],
+			},
+			InstanceData {
+				pos: [0.5, 0.5, -2.5],
+			},
+		],
+		&gpu_instance,
+	);
 
 	// assemble program's data
 	let mut program_data = ProgramData {
+		should_quit: false,
+		last_dt_instant: Instant::now(),
+		
 		camera: CameraData {
 			pos: vec3(0.0, 0.0, 0.0),
 			rot_xz: -90.0f32.to_radians(),
@@ -212,13 +249,21 @@ fn main() -> Result<()> {
 
 		main_vertex_buffer,
 		main_index_buffer,
+		main_instance_buffer,
 		textures: Textures { wall_tex },
 
 		uniforms_buffer,
 	};
 
+	
+	
 	window.show();
 	'running: loop {
+		// initial update
+		let new_dt_instant = Instant::now();
+		let dt = new_dt_instant.duration_since(program_data.last_dt_instant).as_secs_f32();
+		program_data.last_dt_instant = new_dt_instant;
+		
 		// handle events
 		for event in event_pump.poll_iter() {
 			match event {
@@ -259,6 +304,25 @@ fn main() -> Result<()> {
 		}
 
 		// update
+		let keyboard_state = KeyboardState::new(&event_pump);
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::A) {
+			program_data.camera.pos.x -= 0.75 * dt;
+		}
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::D) {
+			program_data.camera.pos.x += 0.75 * dt;
+		}
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::W) {
+			program_data.camera.pos.z -= 0.75 * dt;
+		}
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::S) {
+			program_data.camera.pos.z += 0.75 * dt;
+		}
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::Q) {
+			program_data.camera.rot_xz -= 0.25 * dt;
+		}
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::E) {
+			program_data.camera.rot_xz += 0.25 * dt;
+		}
 
 		// render
 		uniforms_raw_data.update(&program_data);
@@ -268,26 +332,24 @@ fn main() -> Result<()> {
 			&gpu_instance,
 		);
 
-		let (surface_tex, surface_tex_view) = match simple_gpu::get_surface_texture(&window_surface)
-		{
-			simple_gpu::SurfaceTextureResult::Some(tex, view) => (tex, view),
-			simple_gpu::SurfaceTextureResult::None => continue,
-			simple_gpu::SurfaceTextureResult::Error => {
-				simple_gpu::reconfigure_window_surface(
-					&mut window_surface,
-					&gpu_instance,
-					window.size(),
-				);
-				depth_tex = simple_gpu::create_depth_texture(
-					"main depth texture",
-					window.size(),
-					&gpu_instance,
-				);
-				continue;
-			}
-		};
-
-		let mut command_encoder = simple_gpu::start_command_encoder("render frame", &gpu_instance);
+		let (surface_tex, surface_tex_view, mut command_encoder) =
+			match simple_gpu::start_frame("render frame", &window_surface, &gpu_instance) {
+				simple_gpu::StartFrameResult::Some(tex, view, commands) => (tex, view, commands),
+				simple_gpu::StartFrameResult::None => continue,
+				simple_gpu::StartFrameResult::Error => {
+					simple_gpu::reconfigure_window_surface(
+						&mut window_surface,
+						&gpu_instance,
+						window.size(),
+					);
+					depth_tex = simple_gpu::create_depth_texture(
+						"main depth texture",
+						window.size(),
+						&gpu_instance,
+					);
+					continue;
+				}
+			};
 
 		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
@@ -301,18 +363,20 @@ fn main() -> Result<()> {
 		simple_gpu::render(
 			&mut render_pass,
 			&main_pipeline,
-			&[&program_data.main_vertex_buffer.wgpu_buffer],
+			&[
+				&program_data.main_vertex_buffer.wgpu_buffer,
+				&program_data.main_instance_buffer.wgpu_buffer,
+			],
 			Some(&program_data.main_index_buffer),
 			&program_data.textures.wall_tex,
 			&program_data.uniforms_buffer.wgpu_bind_group,
-			program_data.main_vertex_buffer.count as u32,
-			1,
+			program_data.main_vertex_buffer.count,
+			program_data.main_instance_buffer.count,
 		);
 
 		simple_gpu::finish_render_pass(render_pass);
 
-		simple_gpu::finish_command_encoder(command_encoder, &gpu_instance);
-		simple_gpu::present_frame(surface_tex, &gpu_instance);
+		simple_gpu::finish_frame(command_encoder, surface_tex, &gpu_instance);
 	}
 
 	Ok(())

@@ -8,17 +8,17 @@ pub struct VertexBuffer<VertexRawData: BufferItemRawData> {
 	/// A handle to the gpu buffer
 	pub wgpu_buffer: wgpu::Buffer,
 	/// The number of vertices this can hold. The actual size of the wgpu buffer is `self.count * size_of::<VertexRawData>()`
-	pub count: u64,
+	pub count: u32,
 	/// Holds the name of the buffer, only used when resizing (aka recreating) the wgpu buffer
 	pub name: String,
 	#[doc(hidden)]
-	_phantom: PhantomData<VertexRawData>,
+	pub _phantom: PhantomData<VertexRawData>,
 }
 
-/// Creates a new vertex buffer. Note: the byte size of the resulting wgpu buffer is `count * size_of::<VertexRawData>()`
+/// Creates a new vertex buffer (which can also be used for instance datas). Note: the byte size of the resulting wgpu buffer is `count * size_of::<VertexRawData>()`
 pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(
 	name: impl Into<String>,
-	vertex_count: u64,
+	item_count: u32,
 	gpu_instance: &GpuInstance,
 ) -> VertexBuffer<VertexRawData> {
 	let name = name.into();
@@ -26,13 +26,13 @@ pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&name),
-			size: vertex_count * std::mem::size_of::<VertexRawData>() as u64,
+			size: item_count as u64 * std::mem::size_of::<VertexRawData>() as u64,
 			usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
 	VertexBuffer {
 		wgpu_buffer: buffer,
-		count: vertex_count,
+		count: item_count,
 		name,
 		_phantom: PhantomData,
 	}
@@ -41,14 +41,14 @@ pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(
 /// Reallocates the wgpu buffer, but does not copy the previous data
 pub fn resize_vertex_buffer<VertexRawData: BufferItemRawData>(
 	vertex_buffer: &mut VertexBuffer<VertexRawData>,
-	new_vertex_count: u64,
+	new_vertex_count: u32,
 	gpu_instance: &GpuInstance,
 ) {
 	vertex_buffer.wgpu_buffer = gpu_instance
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&vertex_buffer.name),
-			size: new_vertex_count * std::mem::size_of::<VertexRawData>() as u64,
+			size: new_vertex_count as u64 * std::mem::size_of::<VertexRawData>() as u64,
 			usage: vertex_buffer.wgpu_buffer.usage(),
 			mapped_at_creation: false,
 		});

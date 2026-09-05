@@ -1,8 +1,18 @@
 {
 	"cSpell.words": [
 		"bytemuck",
+		"easygpu",
+		"impls",
+		"multisample",
 		"multisampled",
+		"multiview",
+		"raylib",
+		"scancode",
+		"srgb",
 		"texels",
-		"Unorm"
+		"unclipped",
+		"Unorm",
+		"wgpu",
+		"Zeroable"
 	]
 }

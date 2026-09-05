@@ -27,8 +27,8 @@ pub struct Texture {
 ///
 /// - If `is_filtered` is true, the sampler and bind group will be set created with bilinear filtering enabled (and no filtering if false)'
 /// - If `is_render_target` is true, `wgpu::TextureUsages::RENDER_ATTACHMENT` is given instead of `wgpu::TextureUsages::COPY_DST`
-#[inline]
 #[must_use]
+#[inline]
 pub fn create_texture(
 	name: &str,
 	size: (u32, u32),
@@ -101,8 +101,8 @@ pub fn create_texture(
 }
 
 /// Creates a new depth texture with a given size
-#[inline]
 #[must_use]
+#[inline]
 pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInstance) -> Texture {
 	let format = wgpu::TextureFormat::Depth32Float;
 
@@ -135,7 +135,7 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInst
 		wgpu::FilterMode::Nearest,
 		gpu_instance,
 	);
-	
+
 	let bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -203,10 +203,7 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 ///
 /// This only errors if it fails to read the file
 #[cfg(feature = "image")]
-pub fn load_texture_from_path(
-	path: &Path,
-	gpu_instance: &GpuInstance,
-) -> Result<Texture> {
+pub fn load_texture_from_path(path: &Path, gpu_instance: &GpuInstance) -> Result<Texture> {
 	let texture_image =
 		image::open(path).with_context(|| format!("Failed to read file {}", path.display()))?;
 	let size = (texture_image.width(), texture_image.height());

@@ -10,12 +10,12 @@ pub struct UniformsBuffer<UniformsRawData> {
 	/// This is a bind group with just one binding, which is a link to this struct's `wgpu::Buffer`. The layout for this is taken from `gpu_instance.wgpu_uniforms_bind_group_layout`
 	pub wgpu_bind_group: wgpu::BindGroup,
 	#[doc(hidden)]
-	_phantom: PhantomData<UniformsRawData>,
+	pub _phantom: PhantomData<UniformsRawData>,
 }
 
 /// Creates the buffer that stores uniform data
-#[inline]
 #[must_use]
+#[inline]
 pub fn create_uniforms_buffer<UniformsRawData>(
 	gpu_instance: &GpuInstance,
 ) -> UniformsBuffer<UniformsRawData> {

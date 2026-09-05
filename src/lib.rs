@@ -36,11 +36,11 @@ pub use shaders_glsl::*;
 
 
 
-/// Creates a new wgpu instance (and more), all combined into a `GpuInstance` struct
+/// Creates a new [`GpuInstance`]
 ///
 /// # Errors
 ///
-/// This returns an error if `wgpu::Instance::request_adapter()` errors or if `wgpu::Adapter::request_device()` errors
+/// This returns an error if [`wgpu::Instance::request_adapter()`] errors or if [`wgpu::Adapter::request_device()`] errors
 #[inline]
 pub fn init() -> Result<GpuInstance> {
 	let wgpu_instance =
@@ -139,7 +139,7 @@ pub fn init() -> Result<GpuInstance> {
 		});
 
 	let pipeline_layout = wgpu_device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-		label: Some("main_filtered_pipeline_layout"),
+		label: Some("main_pipeline_layout"),
 		bind_group_layouts: &[
 			Some(&uniforms_bind_group_layout),
 			Some(&texture_bind_group_layout),
@@ -163,6 +163,7 @@ pub fn init() -> Result<GpuInstance> {
 
 /// Allows you to start rendering a frame by preparing instructions for the gpu
 #[must_use]
+#[inline]
 pub fn start_command_encoder(name: &str, gpu_instance: &GpuInstance) -> wgpu::CommandEncoder {
 	gpu_instance
 		.wgpu_device
@@ -170,7 +171,8 @@ pub fn start_command_encoder(name: &str, gpu_instance: &GpuInstance) -> wgpu::Co
 }
 
 /// Submits a command encoder to the gpu, which starts the actual rendering of the next frame
-pub fn finish_command_encoder(command_encoder: wgpu::CommandEncoder, gpu_instance: &GpuInstance) {
+#[inline]
+pub fn submit_gpu_commands(command_encoder: wgpu::CommandEncoder, gpu_instance: &GpuInstance) {
 	gpu_instance
 		.wgpu_queue
 		.submit(std::iter::once(command_encoder.finish()));
@@ -178,9 +180,55 @@ pub fn finish_command_encoder(command_encoder: wgpu::CommandEncoder, gpu_instanc
 
 
 
-/// Returns the limits (maximum texture sizes, max bindings per group, etc) for the current gpu
-#[inline]
+/// Represents whether 1: a texture was retrieved, 2: no texture was given, or 3: there was an error requiring reconfiguring
+///
+/// This is the same as [`SurfaceTextureResult`], but with a [`wgpu::CommandEncoder`] added to the [`Some`] variant
+pub enum StartFrameResult {
+	/// Surface texture was successfully acquired
+	Some(
+		wgpu::SurfaceTexture,
+		wgpu::TextureView,
+		wgpu::CommandEncoder,
+	),
+	/// Surface timed out or is occluded (no rendering is needed)
+	None,
+	/// Surface textured errored, requires `simple_gpu::reconfigure_window_surface()`
+	Error,
+}
+
+/// Combines `get_surface_texture()` and `start_command_encoder()` into a single function
 #[must_use]
+#[inline]
+pub fn start_frame(
+	name: &str,
+	surface: &WindowSurface,
+	gpu_instance: &GpuInstance,
+) -> StartFrameResult {
+	match get_surface_texture(surface) {
+		SurfaceTextureResult::Some(tex, view) => {
+			StartFrameResult::Some(tex, view, start_command_encoder(name, gpu_instance))
+		}
+		SurfaceTextureResult::None => StartFrameResult::None,
+		SurfaceTextureResult::Error => StartFrameResult::Error,
+	}
+}
+
+/// Combines `submit_gpu_commands()` and `present_frame()` into a single function
+#[inline]
+pub fn finish_frame(
+	command_encoder: wgpu::CommandEncoder,
+	surface_tex: wgpu::SurfaceTexture,
+	gpu_instance: &GpuInstance,
+) {
+	submit_gpu_commands(command_encoder, gpu_instance);
+	present_frame(surface_tex, gpu_instance);
+}
+
+
+
+/// Returns the limits (maximum texture sizes, max bindings per group, etc) for the current gpu
+#[must_use]
+#[inline]
 pub fn get_gpu_limits(gpu_instance: &GpuInstance) -> wgpu::Limits {
 	gpu_instance.wgpu_adapter.limits()
 }
@@ -195,7 +243,7 @@ pub struct GpuInstance {
 	pub wgpu_adapter: wgpu::Adapter,
 	/// This is the gpu's interface, allowing you to create buffers, register shaders, etc
 	pub wgpu_device: wgpu::Device,
-	/// This is the queue of commands that will be sent to the gpu to render the next frame
+	/// This is where you send the commands for the gpu to execute
 	pub wgpu_queue: wgpu::Queue,
 	/// This specifies the layout for the uniforms bind group. More:
 	///
@@ -204,19 +252,22 @@ pub struct GpuInstance {
 	/// This specifies the layout for each texture's bind group. More:
 	///
 	/// - Binding 0: texture view
-	/// - Binding 1: texture sampler
+	/// - Binding 1: texture sampler (filtering)
+	/// - Binding 2: texture sampler (non-filtering)
 	pub wgpu_texture_bind_group_layout: wgpu::BindGroupLayout,
 	/// This specifies the layout for each depth texture's bind group. More:
 	///
 	/// - Binding 0: texture view
-	/// - Binding 1: texture sampler
+	/// - Binding 1: texture sampler (filtering)
+	/// - Binding 2: texture sampler (non-filtering)
 	pub wgpu_depth_texture_bind_group_layout: wgpu::BindGroupLayout,
 	/// This is the default pipeline layout used to render everything. More:
 	///
 	/// - Its bindings are:
 	/// - Bind group 0 binding 0: buffer (type: uniforms)
 	/// - Bind group 1 binding 0: texture view
-	/// - Bind group 1 binding 1: texture sampler
+	/// - Bind group 1 binding 1: texture sampler (filtering)
+	/// - Bind group 1 binding 2: texture sampler (non-filtering)
 	pub wgpu_pipeline_layout: wgpu::PipelineLayout,
 }
 
