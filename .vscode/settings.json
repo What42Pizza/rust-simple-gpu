@@ -7,6 +7,7 @@
 		"multisampled",
 		"multiview",
 		"raylib",
+		"rects",
 		"scancode",
 		"srgb",
 		"Texel",

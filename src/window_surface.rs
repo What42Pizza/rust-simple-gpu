@@ -157,7 +157,7 @@ pub fn surface_from_raw_data<'a>(
 		.formats
 		.iter()
 		.find(|format| format.is_srgb())
-		.expect("srgb-compatible window surface is required");
+		.unwrap_or_else(|| panic!("srgb-compatible window surface is required, but the only surface_formats are: {:?}", capabilities.formats));
 
 	let config = wgpu::SurfaceConfiguration {
 		usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

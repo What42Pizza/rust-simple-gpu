@@ -12,8 +12,7 @@ use glam::{
 };
 use log::info;
 use sdl3::{
-	event::{Event, WindowEvent},
-	keyboard::{KeyboardState, Keycode},
+	event::{Event, WindowEvent}, keyboard::{KeyboardState, Keycode}, libc::rand,
 };
 use simple_gpu::BufferItemRawData;
 use std::{path::PathBuf, time::Instant};
@@ -81,6 +80,7 @@ struct CameraData {
 
 struct Textures {
 	wall_tex: simple_gpu::Texture,
+	atlas: simple_gpu::Texture,
 }
 
 
@@ -218,19 +218,55 @@ fn main() -> Result<()> {
 	simple_gpu::update_index_buffer(&mut main_index_buffer, &[0, 1, 2, 2, 1, 3], &gpu_instance);
 
 	let mut main_instance_buffer =
-		simple_gpu::create_vertex_buffer("main instance buffer", 2, &gpu_instance);
+		simple_gpu::create_vertex_buffer("main instance buffer", 1, &gpu_instance);
 	simple_gpu::update_vertex_buffer(
 		&mut main_instance_buffer,
 		&[
+			// InstanceData {
+			// 	pos: [0.5, 0.5, -2.5],
+			// },
+			// InstanceData {
+			// 	pos: [0.0, 0.0, -3.0],
+			// },
 			InstanceData {
-				pos: [0.5, 0.5, -2.5],
-			},
-			InstanceData {
-				pos: [0.0, 0.0, -3.0],
+				pos: [0.0, 0.0, -1.5],
 			},
 		],
 		&gpu_instance,
 	);
+	
+	fn make_atlas(gpu_instance: &simple_gpu::GpuInstance) -> simple_gpu::Texture {
+		let mut atlas_textures = vec![];
+		for i in 0 .. 32 + (63 & unsafe { rand() }) {
+			let width = 4 + (63 & unsafe { rand() as u32 });
+			let height = 4 + (63 & unsafe { rand() as u32 });
+			let r = 16 + (127 & unsafe { rand() as u8 });
+			let g = 16 + (127 & unsafe { rand() as u8 });
+			let b = 16 + (127 & unsafe { rand() as u8 });
+			let mut data = vec![];
+			for y in 0..height {
+				for x in 0..width {
+					if ((x + y) % 16) < 2 || (x.wrapping_sub(y) % 16) < 2 {
+						data.push(0);
+						data.push(0);
+						data.push(0);
+						data.push(255);
+					} else {
+						data.push(r);
+						data.push(g);
+						data.push(b);
+						data.push(255);
+					}
+				}
+			}
+			// let atlas = simple_gpu::create_texture("main atlas", (width, height), wgpu::TextureFormat::Rgba8Unorm, &gpu_instance, false);
+			// simple_gpu::update_texture(&atlas, &data, &gpu_instance);
+			atlas_textures.push((width, height, data));
+		}
+		let (atlas, tex_locations) = simple_gpu::create_texture_atlas("main atlas", wgpu::TextureFormat::Rgba8Unorm, 3, &atlas_textures, &gpu_instance);
+		atlas
+	}
+	let atlas = make_atlas(&gpu_instance);
 
 	// assemble program's data
 	let mut program_data = ProgramData {
@@ -250,7 +286,7 @@ fn main() -> Result<()> {
 		main_vertex_buffer,
 		main_index_buffer,
 		main_instance_buffer,
-		textures: Textures { wall_tex },
+		textures: Textures { wall_tex, atlas},
 
 		uniforms_buffer,
 	};
@@ -298,6 +334,9 @@ fn main() -> Result<()> {
 				} => {
 					println!("closing");
 					program_data.should_quit = true;
+				}
+				Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
+					program_data.textures.atlas = make_atlas(&gpu_instance);
 				}
 				e => {
 					info!("Unknown event: {e:?}");
@@ -370,7 +409,7 @@ fn main() -> Result<()> {
 				&program_data.main_instance_buffer.wgpu_buffer,
 			],
 			Some(&program_data.main_index_buffer),
-			&program_data.textures.wall_tex,
+			&program_data.textures.atlas,
 			&program_data.uniforms_buffer.wgpu_bind_group,
 			program_data.main_vertex_buffer.count,
 			program_data.main_instance_buffer.count,
