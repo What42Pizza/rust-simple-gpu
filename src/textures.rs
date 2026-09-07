@@ -202,6 +202,7 @@ pub fn load_texture_from_path(path: &Path, gpu_instance: &GpuInstance) -> Result
 
 /// Represents a location within a generated texture atlas
 #[cfg(feature = "atlas")]
+#[derive(Copy, Clone, Debug)]
 pub struct AtlasLocation {
 	/// The position within the atlas
 	pub pos: (u32, u32),
@@ -211,65 +212,58 @@ pub struct AtlasLocation {
 
 /// Builds an atlas out of many textures
 /// 
-/// The input is a list of textures, with each item having a specified width, height, and pixel data. Also, the mip value works in the same way as in texture samplers, `map_mip` being 0 means no mip levels, 1 means there's one extra mip level that's half the texture width & height, etc
+/// The input is a list of textures, with each item having a specified width, height, and pixel data. Also, the mip value works in the same way as in texture samplers, `map_mip` being 0 means no mip levels, 1 means there's one extra mip level that's half the texture width & height, and so on
 #[cfg(feature = "atlas")]
 #[must_use]
 pub fn create_texture_atlas<Data: AsRef<[u8]>>(name: &str, format: wgpu::TextureFormat, max_mip: u32, textures: &[(u32, u32, Data)], gpu_instance: &GpuInstance) -> (Texture, Vec<AtlasLocation>) {
-    use std::collections::BTreeMap;
 	
 	let bytes_per_pixel = format.block_copy_size(None).unwrap_or_else(|| panic!("Failed to get the byte size of the given texture format: {format:?}"));
 	let fit_mip = |v: u32| -> u32 {
 		(((v - 1) >> max_mip) + 1) << max_mip
 	};
 
-	let mut rects_to_place: rectangle_pack::GroupedRectsToPlace<u32, u8> = rectangle_pack::GroupedRectsToPlace::new();
+	let mut rects_to_place = Vec::with_capacity(textures.len());
 	let mut total_pixels = 0;
 	for (i, (tex_width, tex_height, _tex_data)) in textures.iter().enumerate() {
 		if *tex_width == 0 || *tex_height == 0 { continue; }
 		let (tex_width, tex_height) = (fit_mip(*tex_width) >> max_mip, fit_mip(*tex_height) >> max_mip);
-		rects_to_place.push_rect(i as u32, None, rectangle_pack::RectToInsert::new(tex_width, tex_height, 1));
+		rects_to_place.push(crunch::Item::new(i, tex_width as usize, tex_height as usize, crunch::Rotation::None));
 		total_pixels += tex_width as u64 * tex_height as u64;
 	}
 	
-	let mut atlas_size = (total_pixels.isqrt() as u32) * 16 / 15;
-	atlas_size = fit_mip(atlas_size);
+	let mut atlas_size = total_pixels.isqrt() as u32 + 2;
 	
 	loop {
 		
-		let mut target_bins = BTreeMap::new();
-		target_bins.insert(0u8, rectangle_pack::TargetBin::new(atlas_size, atlas_size, 1));
-		
-		let results = rectangle_pack::pack_rects(&rects_to_place, &mut target_bins, &rectangle_pack::volume_heuristic, &rectangle_pack::contains_smallest_box);
-		let Result::Ok(results) = results else {
-			atlas_size = fit_mip(atlas_size * 16 / 15 + (1 << max_mip));
+		let container = crunch::Rect::of_size(atlas_size as usize, atlas_size as usize);
+		let Result::Ok(results) = crunch::pack(container, rects_to_place.iter().cloned()) else {
+			// println!("did not fit");
+			atlas_size = atlas_size * 32 / 31 + 1;
 			continue;
 		};
-		let results = results.packed_locations();
 		
 		let atlas_size  = atlas_size << max_mip;
 		
 		let texture = create_texture(name, (atlas_size, atlas_size), format, gpu_instance, false);
 		
-		let mut rects = Vec::with_capacity(textures.len());
-		let mut atlas_data = vec![0; atlas_size as usize * atlas_size as usize * bytes_per_pixel as usize];
+		let mut rects = vec![AtlasLocation {
+			pos: (0, 0),
+			size: (0, 0),
+		}; textures.len()];
+		let mut atlas_data = vec![127; atlas_size as usize * atlas_size as usize * bytes_per_pixel as usize];
 		
-		for (i, (width, height, data)) in textures.iter().enumerate() {
+		for placed_rect in results {
+			let (width, height, data) = &textures[placed_rect.data];
 			let data = data.as_ref();
-			let Some((_bin, loc)) = results.get(&(i as u32)) else {
-				rects.push(AtlasLocation {
-					pos: (0, 0),
-					size: (0, 0),
-				});
-				continue;
-			};
-			// note: fit_mip() is intentionally not done
-			let (loc_x, loc_y) = (loc.x() << max_mip, loc.y() << max_mip);
-			rects.push(AtlasLocation {
+			let (loc_x, loc_y) = ((placed_rect.rect.x as u32) << max_mip, (placed_rect.rect.y as u32) << max_mip);
+			
+			rects[placed_rect.data] = AtlasLocation {
 				pos: (loc_x, loc_y),
 				size: (*width, *height),
-			});
-			let mip_fitted_width = fit_mip(*width);
+			};
+			
 			// copy texture data into atlas data
+			let mip_fitted_width = fit_mip(*width);
 			for row_y in 0..*height {
 				// get source row
 				let src = &data[(row_y * width * bytes_per_pixel) as usize ..][.. (width * bytes_per_pixel) as usize];
@@ -289,6 +283,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(name: &str, format: wgpu::Texture
 					dst = &mut dst[bytes_per_pixel as usize ..];
 				}
 			}
+			
 			// add mipmap padding (+y)
 			let mip_fitted_height = fit_mip(*height); // note: don't use fit_mip() here because we want the lower value
 			if *height != mip_fitted_height {
@@ -315,6 +310,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(name: &str, format: wgpu::Texture
 		}
 		
 		update_texture(&texture, &atlas_data, gpu_instance);
+		// println!("efficiency: {}", total_pixels as f32 / ((atlas_size >> max_mip) * (atlas_size >> max_mip)) as f32);
 		
 		return (texture, rects);
 	}

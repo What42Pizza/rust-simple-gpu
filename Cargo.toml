@@ -37,8 +37,8 @@ image = {
 	default-features = false,
 	features = [ "png", "jpeg", "webp", "bmp", "tga" ],
 }
-rectangle-pack = {
-	version = "0.4.*",
+crunch = {
+	version = "0.5.*",
 	optional = true,
 }
 
@@ -47,11 +47,11 @@ default = [ "glsl", "image", "atlas" ]
 glsl = [ "wgpu/glsl" ]
 wgsl = [ "wgpu/wgsl" ]
 image = [ "dep:image" ]
-atlas = [ "dep:rectangle-pack" ]
+atlas = [ "dep:crunch" ]
 
 [dev-dependencies]
 sdl3 = {
-	version = "0.18.*",
+	version = "0.20.*",
 	features = [ "raw-window-handle", "build-from-source" ],
 }
 env_logger = "0.11.*"

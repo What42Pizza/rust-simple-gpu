@@ -14,6 +14,7 @@
 		"texels",
 		"unclipped",
 		"Unorm",
+		"Vsync",
 		"wgpu",
 		"wgsl",
 		"Zeroable"

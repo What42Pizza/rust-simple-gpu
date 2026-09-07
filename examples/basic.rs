@@ -237,9 +237,9 @@ fn main() -> Result<()> {
 	
 	fn make_atlas(gpu_instance: &simple_gpu::GpuInstance) -> simple_gpu::Texture {
 		let mut atlas_textures = vec![];
-		for i in 0 .. 32 + (63 & unsafe { rand() }) {
-			let width = 4 + (63 & unsafe { rand() as u32 });
-			let height = 4 + (63 & unsafe { rand() as u32 });
+		for i in 0 .. 32 + (127 & unsafe { rand() }) {
+			let width = 16 + (31 & unsafe { rand() as u32 });
+			let height = 16 + (31 & unsafe { rand() as u32 });
 			let r = 16 + (127 & unsafe { rand() as u8 });
 			let g = 16 + (127 & unsafe { rand() as u8 });
 			let b = 16 + (127 & unsafe { rand() as u8 });
@@ -263,7 +263,9 @@ fn main() -> Result<()> {
 			// simple_gpu::update_texture(&atlas, &data, &gpu_instance);
 			atlas_textures.push((width, height, data));
 		}
+		let start = Instant::now();
 		let (atlas, tex_locations) = simple_gpu::create_texture_atlas("main atlas", wgpu::TextureFormat::Rgba8Unorm, 3, &atlas_textures, &gpu_instance);
+		println!("time taken: {} micros", start.elapsed().as_micros());
 		atlas
 	}
 	let atlas = make_atlas(&gpu_instance);
@@ -322,6 +324,7 @@ fn main() -> Result<()> {
 						window.size(),
 						&gpu_instance,
 					);
+					program_data.aspect_ratio = new_width as f32 / new_height as f32;
 				}
 				Event::Quit { .. }
 				| Event::Window {
