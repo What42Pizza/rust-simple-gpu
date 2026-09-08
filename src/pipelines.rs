@@ -12,6 +12,7 @@ pub fn create_2d_pipeline(
 	output_format: &wgpu::TextureFormat,
 	gpu_instance: &GpuInstance,
 ) -> wgpu::RenderPipeline {
+	/* This is not needed in future version of wgpu */ let vertex_buffer_layouts = vertex_buffer_layouts.iter().map(|v| v.as_ref().unwrap().clone()).collect::<Vec<_>>();
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -20,7 +21,7 @@ pub fn create_2d_pipeline(
 			vertex: wgpu::VertexState {
 				module: vertex_shader,
 				entry_point: None,
-				buffers: vertex_buffer_layouts,
+				buffers: &vertex_buffer_layouts,
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			},
 			fragment: Some(wgpu::FragmentState {
@@ -51,6 +52,7 @@ pub fn create_3d_pipeline(
 	output_format: &wgpu::TextureFormat,
 	gpu_instance: &GpuInstance,
 ) -> wgpu::RenderPipeline {
+	/* This is not needed in future version of wgpu */ let vertex_buffer_layouts = vertex_buffer_layouts.iter().map(|v| v.as_ref().unwrap().clone()).collect::<Vec<_>>();
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -59,7 +61,7 @@ pub fn create_3d_pipeline(
 			vertex: wgpu::VertexState {
 				module: vertex_shader,
 				entry_point: None,
-				buffers: vertex_buffer_layouts,
+				buffers: &vertex_buffer_layouts,
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			},
 			fragment: Some(wgpu::FragmentState {

@@ -10,7 +10,7 @@ keywords = [ "gpu", "wgpu", "simple", "rendering", "graphics" ]
 categories = [ "multimedia", "rendering", "rendering::graphics-api", "graphics", "game-development" ]
 
 [dependencies.wgpu]
-	version = "30.*"
+	version = "29.*" # NOTE: wgpu 30.* seems to have some pretty bad input lag problems
 	default-features = false
 	features = [ "std", "dx12", "metal", "gles", "vulkan" ]
 [dependencies.raw-window-handle]

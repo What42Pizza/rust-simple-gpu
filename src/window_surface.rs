@@ -64,8 +64,9 @@ pub fn get_surface_texture(surface: &WindowSurface) -> SurfaceTextureResult {
 }
 
 /// Tells the gpu to present the rendered frame when it is ready
-pub fn present_frame(surface_tex: wgpu::SurfaceTexture, gpu_instance: &GpuInstance) {
-	gpu_instance.wgpu_queue.present(surface_tex);
+pub fn present_frame(surface_tex: wgpu::SurfaceTexture, _gpu_instance: &GpuInstance) {
+	surface_tex.present();
+	/* This will be needed in future version of wgpu */ //gpu_instance.wgpu_queue.present(surface_tex);
 }
 
 
@@ -162,7 +163,7 @@ pub fn surface_from_raw_data<'a>(
 	let config = wgpu::SurfaceConfiguration {
 		usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 		format,
-		color_space: wgpu::SurfaceColorSpace::Srgb,
+		//color_space: wgpu::SurfaceColorSpace::Srgb,
 		width: window_size.0,
 		height: window_size.1,
 		present_mode,

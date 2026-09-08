@@ -263,7 +263,7 @@ fn main() -> Result<()> {
 		}
 		let start = Instant::now();
 		let (atlas, _tex_locations, _atlas_allocator) = simple_gpu::create_texture_atlas("main atlas", &atlas_textures, wgpu::TextureFormat::Rgba8Unorm, 3, None, &gpu_instance);
-		println!("time taken: {} micros", start.elapsed().as_micros());
+		println!("generated new atlas, time taken: {} micros", start.elapsed().as_micros());
 		atlas
 	}
 	let atlas = make_atlas(&gpu_instance);
@@ -332,11 +332,9 @@ fn main() -> Result<()> {
 				| Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
 					println!("closing");
 					program_data.should_quit = true;
-					//break;
 				}
 				Event::MouseButtonDown { mouse_btn: MouseButton::Left, .. } => {
 					program_data.textures.atlas = make_atlas(&gpu_instance);
-					//println!("made new atlas");
 				}
 				e => {
 					info!("Unknown event: {e:?}");
