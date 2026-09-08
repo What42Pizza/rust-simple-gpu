@@ -167,7 +167,7 @@ pub fn surface_from_raw_data<'a>(
 		height: window_size.1,
 		present_mode,
 		alpha_mode: wgpu::CompositeAlphaMode::Auto,
-		desired_maximum_frame_latency: 0,
+		desired_maximum_frame_latency: 1,
 		view_formats: vec![],
 	};
 

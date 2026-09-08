@@ -9,54 +9,45 @@ readme = "readme.md"
 keywords = [ "gpu", "wgpu", "simple", "rendering", "graphics" ]
 categories = [ "multimedia", "rendering", "rendering::graphics-api", "graphics", "game-development" ]
 
-[dependencies]
-wgpu = {
-	version = "30.*",
-	default-features = false,
-	features = [ "std", "dx12", "metal", "gles", "vulkan" ],
-}
-raw-window-handle = {
-	version = "0.6.*",
-	default-features = false,
-}
-pollster = {
-	version = "1.*",
-	default-features = false,
-}
-anyhow = {
-	version = "1.*",
-	default-features = false,
-	}
-bytemuck = {
-	version = "1.*",
-	default-features = false,
-}
-image = {
-	version = "0.25.*",
-	optional = true,
-	default-features = false,
-	features = [ "png", "jpeg", "webp", "bmp", "tga" ],
-}
-crunch = {
-	version = "0.5.*",
-	optional = true,
-}
+[dependencies.wgpu]
+	version = "30.*"
+	default-features = false
+	features = [ "std", "dx12", "metal", "gles", "vulkan" ]
+[dependencies.raw-window-handle]
+	version = "0.6.*"
+	default-features = false
+[dependencies.pollster]
+	version = "1.*"
+	default-features = false
+[dependencies.anyhow]
+	version = "1.*"
+	default-features = false
+[dependencies.bytemuck]
+	version = "1.*"
+	default-features = false
+[dependencies.image]
+	version = "0.25.*"
+	optional = true
+	default-features = false
+	features = [ "png", "jpeg", "webp", "bmp", "tga" ]
+[dependencies.guillotiere]
+	version = "0.7.*"
+	optional = true
 
 [features]
 default = [ "glsl", "image", "atlas" ]
 glsl = [ "wgpu/glsl" ]
 wgsl = [ "wgpu/wgsl" ]
 image = [ "dep:image" ]
-atlas = [ "dep:crunch" ]
+atlas = [ "dep:guillotiere" ]
 
-[dev-dependencies]
-sdl3 = {
-	version = "0.20.*",
-	features = [ "raw-window-handle", "build-from-source" ],
-}
-env_logger = "0.11.*"
-glam = {
-	version = "0.33.*",
-	features = [ "bytemuck" ],
-}
-log = "0.4.*"
+[dev-dependencies.sdl3]
+	version = "0.20.*"
+	features = [ "raw-window-handle", "build-from-source" ]
+[dev-dependencies.env_logger]
+	version = "0.11.*"
+[dev-dependencies.glam]
+	version = "0.33.*"
+	features = [ "bytemuck" ]
+[dev-dependencies.log]
+	version = "0.4.*"

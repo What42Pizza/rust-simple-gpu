@@ -3,10 +3,11 @@ use crate::GpuInstance;
 #[cfg(feature = "image")]
 use crate::file_name;
 #[cfg(feature = "image")]
-use anyhow::{Context, Ok, Result, anyhow};
-use std::fs;
 #[cfg(feature = "image")]
 use std::path::Path;
+use anyhow::{Context, Ok, Result, anyhow};
+#[cfg(all(feature = "atlas", feature = "image"))]
+use std::{collections::HashMap, path::PathBuf};
 
 
 
@@ -200,6 +201,8 @@ pub fn load_texture_from_path(path: &Path, gpu_instance: &GpuInstance) -> Result
 	Ok(texture)
 }
 
+
+
 /// Represents a location within a generated texture atlas
 #[cfg(feature = "atlas")]
 #[derive(Copy, Clone, Debug)]
@@ -208,138 +211,197 @@ pub struct AtlasLocation {
 	pub pos: (u32, u32),
 	/// The size of the texture within the atlas
 	pub size: (u32, u32),
+	/// The id of the allocation within the [`guillotiere::AtlasAllocator`]. Note: if this equals `AllocId::deserialize(u32::MAX)`, the texture was not placed because its width or height is 0.
+	pub alloc_id: guillotiere::AllocId,
+}
+
+/// A simple wrapper around [`guillotiere::AtlasAllocator`] that ensures all positions are re-expanded to match their actual texture position
+/// 
+/// When a texture atlas is created, the allocator for it has its coordinates scaled down by `2 ^ max_mip`. This is to ensure that all positions are automatically aligned to mip boundaries, but it can also create some confusion. To make it more obvious that this is the case (and also for some extra convenience), the allocator is wrapped in this struct along with the max mip level it was created with
+#[cfg(feature = "atlas")]
+pub struct AtlasAllocator {
+	/// The actual allocator
+	pub allocator: guillotiere::AtlasAllocator,
+	/// The mip level this allocator uses. The allocator must have a size that is a multiple of `2 ^ map_mip`, and the outputs must be scaled up by `2 ^ max_mip` (which is automatically done with the methods on this struct)
+	pub max_mip: u32,
 }
 
 /// Builds an atlas out of many textures
 /// 
 /// The input is a list of textures, with each item having a specified width, height, and pixel data. Also, the mip value works in the same way as in texture samplers, `map_mip` being 0 means no mip levels, 1 means there's one extra mip level that's half the texture width & height, and so on
+/// 
+/// Important note: the returned allocator is scaled down by `2 ^ max_mip` so that the allocated positions are automatically aligned to a mip boundary. This means that if you want to use the allocator yourself, you need to shift the output locations right by max_mip
 #[cfg(feature = "atlas")]
 #[must_use]
-pub fn create_texture_atlas<Data: AsRef<[u8]>>(name: &str, format: wgpu::TextureFormat, max_mip: u32, textures: &[(u32, u32, Data)], gpu_instance: &GpuInstance) -> (Texture, Vec<AtlasLocation>) {
-	
-	let bytes_per_pixel = format.block_copy_size(None).unwrap_or_else(|| panic!("Failed to get the byte size of the given texture format: {format:?}"));
-	let fit_mip = |v: u32| -> u32 {
-		(((v - 1) >> max_mip) + 1) << max_mip
-	};
+pub fn create_texture_atlas<Data: AsRef<[u8]>>(name: &str, textures: &[(u32, u32, Data)], format: wgpu::TextureFormat, max_mip: u32, min_size: Option<(u32, u32)>, gpu_instance: &GpuInstance) -> (Texture, Vec<AtlasLocation>, AtlasAllocator) {
+	let mut textures = textures.iter().enumerate().map(|(i, (width, height, data))| (*width, *height, data, i)).collect::<Vec<_>>();
+	textures.sort_by_key(|(width, height, _data, _i)| u32::MAX - width * height);
 
-	let mut rects_to_place = Vec::with_capacity(textures.len());
-	let mut total_pixels = 0;
-	for (i, (tex_width, tex_height, _tex_data)) in textures.iter().enumerate() {
+	let bytes_per_pixel = format.block_copy_size(None).unwrap_or_else(|| panic!("Failed to get the byte size of the given texture format: {format:?}"));
+
+	let mut total_allocator_pixels = 0;
+	for (tex_width, tex_height, _tex_data, _i) in textures.iter() {
 		if *tex_width == 0 || *tex_height == 0 { continue; }
-		let (tex_width, tex_height) = (fit_mip(*tex_width) >> max_mip, fit_mip(*tex_height) >> max_mip);
-		rects_to_place.push(crunch::Item::new(i, tex_width as usize, tex_height as usize, crunch::Rotation::None));
-		total_pixels += tex_width as u64 * tex_height as u64;
+		let (tex_width, tex_height) = (fit_mip(*tex_width, max_mip) >> max_mip, fit_mip(*tex_height, max_mip) >> max_mip);
+		total_allocator_pixels += tex_width as u64 * tex_height as u64;
 	}
+	let atlas_size = total_allocator_pixels.isqrt() as u32 + 2;
+	let (mut atlas_width, mut atlas_height) = if let Some((min_width, min_height)) = min_size {
+		(atlas_size.max(min_width), atlas_size.max(min_height))
+	} else {
+		(atlas_size, atlas_size)
+	};
 	
-	let mut atlas_size = total_pixels.isqrt() as u32 + 2;
-	
-	loop {
+	let mut locations = vec![AtlasLocation {
+		pos: (0, 0),
+		size: (0, 0),
+		alloc_id: guillotiere::AllocId::deserialize(u32::MAX),
+	}; textures.len()];
+	'try_alloc: loop {
+		//println!("trying size {atlas_size}");
 		
-		let container = crunch::Rect::of_size(atlas_size as usize, atlas_size as usize);
-		let Result::Ok(results) = crunch::pack(container, rects_to_place.iter().cloned()) else {
-			// println!("did not fit");
-			atlas_size = atlas_size * 32 / 31 + 1;
-			continue;
-		};
+		let mut allocator = guillotiere::AtlasAllocator::new(guillotiere::size2(atlas_width as i32, atlas_height as i32));
 		
-		let atlas_size  = atlas_size << max_mip;
-		
-		let texture = create_texture(name, (atlas_size, atlas_size), format, gpu_instance, false);
-		
-		let mut rects = vec![AtlasLocation {
-			pos: (0, 0),
-			size: (0, 0),
-		}; textures.len()];
-		let mut atlas_data = vec![127; atlas_size as usize * atlas_size as usize * bytes_per_pixel as usize];
-		
-		for placed_rect in results {
-			let (width, height, data) = &textures[placed_rect.data];
-			let data = data.as_ref();
-			let (loc_x, loc_y) = ((placed_rect.rect.x as u32) << max_mip, (placed_rect.rect.y as u32) << max_mip);
-			
-			rects[placed_rect.data] = AtlasLocation {
-				pos: (loc_x, loc_y),
-				size: (*width, *height),
+		for (width, height, _data, i) in &textures {
+			let (width, height) = (fit_mip(*width, max_mip) >> max_mip, fit_mip(*height, max_mip) >> max_mip);
+			let Some(loc) = allocator.allocate(guillotiere::size2(width as i32, height as i32)) else {
+				//println!("did not fit");
+				atlas_width = atlas_width * 32 / 31 + 1;
+				atlas_height = atlas_height * 32 / 31 + 1;
+				continue 'try_alloc;
 			};
-			
-			// copy texture data into atlas data
-			let mip_fitted_width = fit_mip(*width);
-			for row_y in 0..*height {
-				// get source row
-				let src = &data[(row_y * width * bytes_per_pixel) as usize ..][.. (width * bytes_per_pixel) as usize];
-				// get destination row
-				let mut dst = &mut atlas_data[(loc_x * bytes_per_pixel + (loc_y + row_y) * atlas_size * bytes_per_pixel) as usize ..][.. (mip_fitted_width * bytes_per_pixel) as usize];
-				// copy
-				dst[.. (*width * bytes_per_pixel) as usize].copy_from_slice(src);
-				// add mipmap padding (+x)
-				dst = &mut dst[(*width * bytes_per_pixel) as usize ..];
-				let src = &src[src.len() - bytes_per_pixel as usize ..];
-				loop {
-					if dst.is_empty() { break; }
-					dst[.. bytes_per_pixel as usize].copy_from_slice(src);
-					dst[0] /= 2;
-					dst[1] /= 2;
-					dst[2] /= 2;
-					dst = &mut dst[bytes_per_pixel as usize ..];
-				}
-			}
-			
-			// add mipmap padding (+y)
-			let mip_fitted_height = fit_mip(*height); // note: don't use fit_mip() here because we want the lower value
-			if *height != mip_fitted_height {
-				// split it so that we can copy part of the data into another part of the data
-				let (src, dst) = atlas_data.split_at_mut(((loc_y + *height) * atlas_size * bytes_per_pixel) as usize);
-				// select the bottom row of the texture
-				let src = &src[src.len() - ((atlas_size - loc_x) * bytes_per_pixel) as usize .. ][.. (mip_fitted_width * bytes_per_pixel) as usize];
-				// select the start of the row to copy to
-				let mut dst = &mut dst[(loc_x * bytes_per_pixel) as usize ..];
-				// copy each row
-				for row_y in *height..mip_fitted_height {
-					// select the area within the row to copy to
-					dst[.. (mip_fitted_width * bytes_per_pixel) as usize].copy_from_slice(src);
-					for i in 0 .. (*width * bytes_per_pixel) as usize {
-						if i % 4 == 3 {continue;}
-						dst[i] /= 2;
-					}
-					// move selected area forward
-					if row_y != mip_fitted_height - 1 {
-						dst = &mut dst[(atlas_size * bytes_per_pixel) as usize ..];
-					}
-				}
-			}
+			locations[*i] = AtlasLocation {
+				pos: (
+					(loc.rectangle.x_range().start as u32) << max_mip,
+					(loc.rectangle.y_range().start as u32) << max_mip,
+				),
+				size: (width << max_mip, height << max_mip),
+				alloc_id: loc.id,
+			};
 		}
 		
-		update_texture(&texture, &atlas_data, gpu_instance);
-		// println!("efficiency: {}", total_pixels as f32 / ((atlas_size >> max_mip) * (atlas_size >> max_mip)) as f32);
+		let (atlas_width, atlas_height) = (atlas_width << max_mip, atlas_height << max_mip);
 		
-		return (texture, rects);
+		let texture = create_texture(name, (atlas_width, atlas_height), format, gpu_instance, false);
+		
+		let mut atlas_tex_data = vec![127; atlas_width as usize * atlas_height as usize * bytes_per_pixel as usize]; // testing: 127
+		
+		for (width, height, data, i) in &textures {
+			let data = data.as_ref();
+			place_texture_in_atlas(data, locations[*i].pos, (*width, *height), &mut atlas_tex_data, (atlas_width, atlas_height), max_mip, bytes_per_pixel);
+		}
+		
+		update_texture(&texture, &atlas_tex_data, gpu_instance);
+		//println!("efficiency: {}", total_allocator_pixels as f32 / ((atlas_width >> max_mip) * (atlas_height >> max_mip)) as f32);
+		
+		let allocator = AtlasAllocator {
+			allocator,
+			max_mip,
+		};
+		
+		return (texture, locations, allocator);
 	}
 }
+
+/// Places a texture's pixel data inside the pixel data of a texture atlas, accounting for mip mapping
+pub fn place_texture_in_atlas(tex_data: &[u8], pos: (u32, u32), size: (u32, u32), atlas_data: &mut [u8], atlas_size: (u32, u32), max_mip: u32, bytes_per_pixel: u32) {
+	debug_assert_eq!(tex_data.len(), (size.0 * size.1 * bytes_per_pixel) as usize, "Texture data is not the correct size");
+	debug_assert_eq!(atlas_data.len(), (atlas_size.0 * atlas_size.1 * bytes_per_pixel) as usize, "Atlas texture data is not the correct size");
+	debug_assert_eq!(pos.0, fit_mip(pos.0, max_mip), "Texture is not positioned on a mip boundary (this is likely due to incorrect usage of the guillotiere allocator)");
+	debug_assert_eq!(pos.1, fit_mip(pos.1, max_mip), "Texture is not positioned on a mip boundary (this is likely due to incorrect usage of the guillotiere allocator)");
+	debug_assert_eq!(atlas_size.0, atlas_size.0 & (u32::MAX << max_mip), "Atlas size does not line up with the max mip level");
+	debug_assert_eq!(atlas_size.1, atlas_size.1 & (u32::MAX << max_mip), "Atlas size does not line up with the max mip level");
+	
+	let (x, y) = pos;
+	let (width, height) = size;
+	let (atlas_width, _atlas_height) = atlas_size;
+	let mip_fitted_width = fit_mip(width, max_mip);
+	let mip_fitted_height = fit_mip(height, max_mip);
+	
+	for row_y in 0..height {
+		// get source row
+		let src = &tex_data[(row_y * width * bytes_per_pixel) as usize ..][.. (width * bytes_per_pixel) as usize];
+		// get destination row
+		let mut dst = &mut atlas_data[(x * bytes_per_pixel + (y + row_y) * atlas_width * bytes_per_pixel) as usize ..][.. (mip_fitted_width * bytes_per_pixel) as usize];
+		// copy
+		dst[.. (width * bytes_per_pixel) as usize].copy_from_slice(src);
+		// add mipmap padding (+x)
+		dst = &mut dst[(width * bytes_per_pixel) as usize ..];
+		let src = &src[src.len() - bytes_per_pixel as usize ..];
+		loop {
+			if dst.is_empty() { break; }
+			dst[.. bytes_per_pixel as usize].copy_from_slice(src);
+			dst[0] /= 2; // testing
+			dst[1] /= 2; // testing
+			dst[2] /= 2; // testing
+			dst = &mut dst[bytes_per_pixel as usize ..];
+		}
+	}
+	
+	// add mipmap padding (+y)
+	if height != mip_fitted_height {
+		// split it so that we can copy part of the data into another part of the data
+		let (src, dst) = atlas_data.split_at_mut(((y + height) * atlas_width * bytes_per_pixel) as usize);
+		// select the bottom row of the texture
+		let src = &src[src.len() - ((atlas_width - x) * bytes_per_pixel) as usize .. ][.. (mip_fitted_width * bytes_per_pixel) as usize];
+		// select the start of the row to copy to
+		let mut dst = &mut dst[(x * bytes_per_pixel) as usize ..];
+		// copy each row
+		for row_y in height..mip_fitted_height {
+			// select the area within the row to copy to
+			dst[.. (mip_fitted_width * bytes_per_pixel) as usize].copy_from_slice(src);
+			for i in 0 .. (width * bytes_per_pixel) as usize { // testing
+				if i % 4 == 3 {continue;}
+				dst[i] /= 2;
+			}
+			// move selected area forward
+			if row_y != mip_fitted_height - 1 {
+				dst = &mut dst[(atlas_width * bytes_per_pixel) as usize ..];
+			}
+		}
+	}
+}
+
+/// Rounds a value up to the nearest `1 << max_mip`. For example, `fit_mip(20, 3)` will return 32 because `1 << 3` is 16 and 32 is the lowest multiple of 16 that can fit 20
+pub fn fit_mip(v: u32, max_mip: u32) -> u32 {
+	if v == 0 { return 0; }
+	(((v - 1) >> max_mip) + 1) << max_mip
+}
+
+
 
 /// Creates a texture atlas from a given folder
 #[cfg(all(feature = "atlas", feature = "image"))]
 #[must_use]
-pub fn create_texture_atlas_from_path(name: &str, path: &Path, recursive: bool, max_mip: u32, gpu_instance: &GpuInstance) -> Result<(Texture, Vec<AtlasLocation>)> {
+pub fn create_texture_atlas_from_path(name: &str, path: &Path, recursive: bool, max_mip: u32, min_size: Option<(u32, u32)>, gpu_instance: &GpuInstance) -> Result<(Texture, HashMap<PathBuf, AtlasLocation>, AtlasAllocator)> {
 	let mut textures = vec![];
-	let mut paths = fs::read_dir(path).with_context(|| format!("Failed to read contents of folder at {}", path.display()))?.collect::<std::result::Result<Vec<_>, std::io::Error>>()?;
+	let mut texture_paths = vec![];
+	let mut paths = std::fs::read_dir(path).with_context(|| format!("Failed to read contents of folder at {}", path.display()))?.collect::<std::result::Result<Vec<_>, std::io::Error>>()?;
 	
 	loop {
 		let Some(curr_path) = paths.pop() else { break; };
 		let curr_path = curr_path.path();
 		
 		if recursive {
-			for child in fs::read_dir(&curr_path).with_context(|| format!("Failed to read contents of folder at {}", curr_path.display()))? {
+			for child in std::fs::read_dir(&curr_path).with_context(|| format!("Failed to read contents of folder at {}", curr_path.display()))? {
 				paths.push(child?);
 			}
 		}
 		
-		let image = image::open(curr_path)?;
+		let image = image::open(&curr_path)?;
 		textures.push((image.width(), image.height(), image.to_rgba8().into_raw()));
+		texture_paths.push(curr_path);
 		
 	}
 	
-	let output = create_texture_atlas(name, wgpu::TextureFormat::Rgba8Unorm, max_mip, &textures, gpu_instance);
-	Ok(output)
+	let (atlas_texture, locations, allocator) = create_texture_atlas(name, &textures, wgpu::TextureFormat::Rgba8Unorm, max_mip, min_size, gpu_instance);
+	
+	let mut mapped_locations = HashMap::new();
+	for (i, path) in texture_paths.into_iter().enumerate() {
+		mapped_locations.insert(path, locations[i]);
+	}
+	
+	Ok((atlas_texture, mapped_locations, allocator))
 }
 
 
