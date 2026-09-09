@@ -20,7 +20,9 @@ use glam::{
 };
 use log::info;
 use sdl3::{
-	event::{Event, WindowEvent}, keyboard::{KeyboardState, Keycode}, libc::rand,
+	event::{Event, WindowEvent},
+	keyboard::{KeyboardState, Keycode},
+	libc::rand,
 };
 use simple_gpu::BufferItemRawData;
 use std::{path::PathBuf, time::Instant};
@@ -166,8 +168,11 @@ fn main() -> Result<()> {
 	let shaders_path = assets_path.join("shaders");
 	let main_vsh_shader =
 		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("main.vsh"), &gpu_instance, &[])?;
-	let main_fsh_shader =
-		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("main_linear_sample.fsh"), &gpu_instance, &[])?;
+	let main_fsh_shader = simple_gpu::load_glsl_fragment_shader(
+		&shaders_path.join("main_linear_sample.fsh"),
+		&gpu_instance,
+		&[],
+	)?;
 
 	// uniforms
 	let uniforms_buffer = simple_gpu::create_uniforms_buffer::<UniformsRawData>(&gpu_instance);
@@ -192,10 +197,8 @@ fn main() -> Result<()> {
 	);
 
 	// vertex data
-	let mut main_vertex_buffer =
-		simple_gpu::create_vertex_buffer("main vertex buffer", 4, &gpu_instance);
-	simple_gpu::update_vertex_buffer(
-		&mut main_vertex_buffer,
+	let mut main_vertex_buffer = simple_gpu::init_vertex_buffer(
+		"main vertex buffer",
 		&[
 			VertexData {
 				pos: [1.0, 1.0, 0.0],
@@ -220,14 +223,14 @@ fn main() -> Result<()> {
 		],
 		&gpu_instance,
 	);
-	let mut main_index_buffer =
-		simple_gpu::create_index_buffer("main index buffer", 6, &gpu_instance);
-	simple_gpu::update_index_buffer(&mut main_index_buffer, &[0, 1, 2, 2, 1, 3], &gpu_instance);
 
-	let mut main_instance_buffer =
-		simple_gpu::create_vertex_buffer("main instance buffer", 2, &gpu_instance);
-	simple_gpu::update_vertex_buffer(
-		&mut main_instance_buffer,
+	// index data
+	let mut main_index_buffer =
+		simple_gpu::create_index_buffer("main index buffer", &[0, 1, 2, 2, 1, 3], &gpu_instance);
+
+	// instance data
+	let mut main_instance_buffer = simple_gpu::init_vertex_buffer(
+		"main instance buffer",
 		&[
 			InstanceData {
 				pos: [0.5, 0.5, -2.5],
@@ -296,8 +299,14 @@ fn main() -> Result<()> {
 					program_data.aspect_ratio = new_width as f32 / new_height as f32;
 				}
 				Event::Quit { .. }
-				| Event::Window { win_event: WindowEvent::CloseRequested, .. }
-				| Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+				| Event::Window {
+					win_event: WindowEvent::CloseRequested,
+					..
+				}
+				| Event::KeyDown {
+					keycode: Some(Keycode::Escape),
+					..
+				} => {
 					println!("closing");
 					program_data.should_quit = true;
 				}
@@ -380,8 +389,8 @@ fn main() -> Result<()> {
 			Some(&program_data.main_index_buffer),
 			&program_data.textures.wall_tex,
 			&program_data.uniforms_buffer.wgpu_bind_group,
-			program_data.main_vertex_buffer.count,
-			program_data.main_instance_buffer.count,
+			program_data.main_vertex_buffer.wgpu_buffer_len,
+			program_data.main_instance_buffer.wgpu_buffer_len,
 		);
 
 		simple_gpu::finish_render_pass(render_pass);

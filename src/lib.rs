@@ -7,7 +7,7 @@
 //! # Simple Gpu
 //!
 //! This is a tiny abstraction over WGPU that is inspired by the simplicity and directness of multimedia libraries like raylib and SDL. The main goal of this crate is to provide a simple and convenient way of rendering custom data with custom shaders.
-//! 
+//!
 //! ## See the [example program](https://github.com/What42Pizza/rust-simple-gpu/blob/main/examples/basic.rs)
 
 
@@ -84,7 +84,7 @@ pub struct GpuInstance {
 ///
 /// # Errors
 ///
-/// This returns an error if [`wgpu::Instance::request_adapter()`] errors or if [`wgpu::Adapter::request_device()`] errors
+/// This returns an error if [`wgpu::Instance::request_adapter()`] errors or if [`wgpu::Adapter::request_device()`] errors.
 #[inline]
 pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<GpuInstance> {
 	let wgpu_instance =
@@ -239,7 +239,7 @@ pub fn submit_gpu_commands(command_encoder: wgpu::CommandEncoder, gpu_instance: 
 
 /// Represents whether A: a texture was retrieved, B: no texture was given, or C: there was an error requiring reconfiguring
 ///
-/// This is the same as [`SurfaceTextureResult`], but with a [`wgpu::CommandEncoder`] added to the [`Some`] variant
+/// This is the same as [`SurfaceTextureResult`], but with a [`wgpu::CommandEncoder`] added to the `Some` variant
 pub enum StartFrameResult {
 	/// Surface texture was successfully acquired
 	Some(

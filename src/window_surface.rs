@@ -72,10 +72,10 @@ pub fn present_frame(surface_tex: wgpu::SurfaceTexture, _gpu_instance: &GpuInsta
 
 
 /// Similar to [`get_window_surface()`], but allows you to mutate the window after creating the surface
-/// 
+///
 /// # Errors
 ///
-/// This returns an error if it fails to retrieve the window handles, and it always returns the mutable window reference 
+/// This returns an error if it fails to retrieve the window handles, and it always returns the mutable window reference .
 #[inline]
 pub fn get_window_surface_mut<'a, T: HasDisplayHandle + HasWindowHandle>(
 	gpu_instance: &GpuInstance,
@@ -106,7 +106,7 @@ pub fn get_window_surface_mut<'a, T: HasDisplayHandle + HasWindowHandle>(
 ///
 /// # Errors
 ///
-/// This returns an error if it fails to retrieve the window handles
+/// This returns an error if it fails to retrieve the window handles.
 #[inline]
 pub fn get_window_surface<'a, T: HasDisplayHandle + HasWindowHandle>(
 	gpu_instance: &GpuInstance,
@@ -129,11 +129,11 @@ pub fn get_window_surface<'a, T: HasDisplayHandle + HasWindowHandle>(
 ///
 /// # Errors
 ///
-/// This returns an error only if [`wgpu::Instance::create_surface()`] errors
+/// This returns an error only if [`wgpu::Instance::create_surface()`] errors.
 ///
 /// # Panics
 ///
-/// This panics if the surface does not support any srgb texture formats
+/// This panics if the surface does not support any srgb texture formats.
 pub fn surface_from_raw_data<'a>(
 	gpu_instance: &GpuInstance,
 	window_handle: WindowHandle<'a>,
@@ -158,7 +158,12 @@ pub fn surface_from_raw_data<'a>(
 		.formats
 		.iter()
 		.find(|format| format.is_srgb())
-		.unwrap_or_else(|| panic!("srgb-compatible window surface is required, but the only surface_formats are: {:?}", capabilities.formats));
+		.unwrap_or_else(|| {
+			panic!(
+				"srgb-compatible window surface is required, but the only surface_formats are: {:?}",
+				capabilities.formats
+			)
+		});
 
 	let config = wgpu::SurfaceConfiguration {
 		usage: wgpu::TextureUsages::RENDER_ATTACHMENT,

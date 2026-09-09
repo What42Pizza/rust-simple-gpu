@@ -3,6 +3,10 @@ use crate::{GpuInstance, IndexBuffer, Texture};
 
 
 /// Creates a basic 2d rendering pipeline, with no back-face culling and the vertex list treated as a triangles list
+///
+/// # Panics
+///
+/// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed item must be the `Some` variant or this will panic.
 #[must_use]
 pub fn create_2d_pipeline(
 	name: &str,
@@ -12,7 +16,11 @@ pub fn create_2d_pipeline(
 	output_format: &wgpu::TextureFormat,
 	gpu_instance: &GpuInstance,
 ) -> wgpu::RenderPipeline {
-	/* This is not needed in future version of wgpu */ let vertex_buffer_layouts = vertex_buffer_layouts.iter().map(|v| v.as_ref().unwrap().clone()).collect::<Vec<_>>();
+	/* This is not needed in future version of wgpu */
+	let vertex_buffer_layouts = vertex_buffer_layouts
+		.iter()
+		.map(|v| v.as_ref().unwrap().clone())
+		.collect::<Vec<_>>();
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -43,6 +51,10 @@ pub fn create_2d_pipeline(
 }
 
 /// Creates a basic 3d rendering pipeline with back-face culling, counter-clockwise triangles, a 24-bit float depth buffer expected, and the vertex list treated as a triangles list
+///
+/// # Panics
+///
+/// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed item must be the `Some` variant or this will panic.
 #[must_use]
 pub fn create_3d_pipeline(
 	name: &str,
@@ -52,7 +64,11 @@ pub fn create_3d_pipeline(
 	output_format: &wgpu::TextureFormat,
 	gpu_instance: &GpuInstance,
 ) -> wgpu::RenderPipeline {
-	/* This is not needed in future version of wgpu */ let vertex_buffer_layouts = vertex_buffer_layouts.iter().map(|v| v.as_ref().unwrap().clone()).collect::<Vec<_>>();
+	/* This is not needed in future version of wgpu */
+	let vertex_buffer_layouts = vertex_buffer_layouts
+		.iter()
+		.map(|v| v.as_ref().unwrap().clone())
+		.collect::<Vec<_>>();
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

@@ -8,7 +8,7 @@ use std::{fs, path::Path};
 ///
 /// # Errors
 ///
-/// This only errors if it fails to read the file
+/// This only errors if it fails to read the file.
 #[cfg(feature = "glsl")]
 pub fn load_glsl_vertex_shader(
 	path: &Path,
@@ -34,7 +34,7 @@ pub fn load_glsl_vertex_shader(
 ///
 /// # Errors
 ///
-/// This only errors if it fails to read the file
+/// This only errors if it fails to read the file.
 #[cfg(feature = "glsl")]
 pub fn load_glsl_fragment_shader(
 	path: &Path,
@@ -62,7 +62,7 @@ pub fn load_glsl_fragment_shader(
 ///
 /// # Errors
 ///
-/// This only errors if it fails to read the file
+/// This only errors if it fails to read the file.
 #[cfg(feature = "wgsl")]
 pub fn load_wgsl_shader(path: &Path, gpu_instance: &GpuInstance) -> Result<wgpu::ShaderModule> {
 	let shader = fs::read_to_string(path)
