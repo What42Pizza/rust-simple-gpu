@@ -7,9 +7,9 @@
 //! # Simple Gpu
 //!
 //! This is a tiny abstraction over WGPU that is inspired by the simplicity and directness of multimedia libraries like raylib and SDL. The main goal of this crate is to provide a simple and convenient way of rendering custom data with custom shaders.
-//! 
+//!
 //! ## Full walkthrough
-//! 
+//!
 //! - Create a [`GpuInstance`] with [`init()`]
 //! - Get a window's surface with [`get_window_surface_mut()`]
 //! - Load shaders with:
@@ -104,7 +104,7 @@ pub struct GpuInstance {
 	/// - Binding 2: texture sampler (non-filtering)
 	pub wgpu_depth_texture_bind_group_layout: wgpu::BindGroupLayout,
 	/// These are the default pipeline layouts used to render everything. More:
-	/// 
+	///
 	/// - The pipeline at index 0 has 0 texture inputs, at index 1 has 1 texture input, and so on
 	///
 	/// - Its bindings are:

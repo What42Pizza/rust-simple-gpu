@@ -147,13 +147,15 @@ fn main() -> Result<()> {
 		.window("Simple Gpu Example", 1280, 720)
 		.position_centered()
 		.resizable()
+		.hidden()
 		.metal_view()
 		.build()?;
 	let window_size = window.size();
 	let mut event_pump = sdl.event_pump()?;
 
 	// basics
-	let mut gpu_instance = simple_gpu::init(wgpu::Limits::defaults(), wgpu::MemoryHints::Performance)?;
+	let mut gpu_instance =
+		simple_gpu::init(wgpu::Limits::defaults(), wgpu::MemoryHints::Performance)?;
 	let (window, window_surface) = simple_gpu::get_window_surface_mut(
 		&gpu_instance,
 		&mut window,
@@ -388,9 +390,7 @@ fn main() -> Result<()> {
 				&data.instance_buffer.wgpu_buffer,
 			],
 			Some(&data.main_index_buffer),
-			&[
-				&data.textures.wall_tex,
-			],
+			&[&data.textures.wall_tex],
 			&data.uniforms_buffer.wgpu_bind_group,
 			data.vertex_buffer.wgpu_buffer_len,
 			data.instance_buffer.wgpu_buffer_len,

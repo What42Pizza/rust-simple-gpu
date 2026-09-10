@@ -50,7 +50,9 @@ pub fn create_texture(
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
 			format,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::RENDER_ATTACHMENT,
+			usage: wgpu::TextureUsages::TEXTURE_BINDING
+				| wgpu::TextureUsages::COPY_DST
+				| wgpu::TextureUsages::RENDER_ATTACHMENT,
 			view_formats: &[],
 		});
 
@@ -198,7 +200,11 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 ///
 /// This errors if [`image::open()`] errors or if it cannot get the file name from the path.
 #[cfg(feature = "image")]
-pub fn load_texture_from_path(path: &Path, mip_count: u32, gpu_instance: &GpuInstance) -> Result<Texture> {
+pub fn load_texture_from_path(
+	path: &Path,
+	mip_count: u32,
+	gpu_instance: &GpuInstance,
+) -> Result<Texture> {
 	let texture_image =
 		image::open(path).with_context(|| format!("Failed to read file {}", path.display()))?;
 	let size = (texture_image.width(), texture_image.height());

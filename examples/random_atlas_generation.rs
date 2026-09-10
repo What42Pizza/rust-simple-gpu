@@ -187,13 +187,15 @@ fn main() -> Result<()> {
 		.window("Simple Gpu Example", 1280, 720)
 		.position_centered()
 		.resizable()
+		.hidden()
 		.metal_view()
 		.build()?;
 	let window_size = window.size();
 	let mut event_pump = sdl.event_pump()?;
 
 	// basics
-	let mut gpu_instance = simple_gpu::init(wgpu::Limits::defaults(), wgpu::MemoryHints::Performance)?;
+	let mut gpu_instance =
+		simple_gpu::init(wgpu::Limits::defaults(), wgpu::MemoryHints::Performance)?;
 	let (window, window_surface) = simple_gpu::get_window_surface_mut(
 		&gpu_instance,
 		&mut window,
@@ -385,11 +387,7 @@ fn main() -> Result<()> {
 
 		// render
 		uniforms_raw_data.update(&data);
-		simple_gpu::update_uniforms_buffer(
-			&data.uniforms_buf,
-			&uniforms_raw_data,
-			&gpu_instance,
-		);
+		simple_gpu::update_uniforms_buffer(&data.uniforms_buf, &uniforms_raw_data, &gpu_instance);
 
 		let (surface_tex, surface_tex_view, mut command_encoder) =
 			match simple_gpu::start_frame("render frame", &window_surface, &gpu_instance) {
@@ -422,14 +420,9 @@ fn main() -> Result<()> {
 		simple_gpu::render(
 			&mut render_pass,
 			&main_pipeline,
-			&[
-				&data.vertex_buf.wgpu_buffer,
-				&data.instance_buf.wgpu_buffer,
-			],
+			&[&data.vertex_buf.wgpu_buffer, &data.instance_buf.wgpu_buffer],
 			Some(&data.index_buf),
-			&[
-				&data.textures.atlas,
-			],
+			&[&data.textures.atlas],
 			&data.uniforms_buf.wgpu_bind_group,
 			data.vertex_buf.wgpu_buffer_len,
 			data.instance_buf.wgpu_buffer_len,

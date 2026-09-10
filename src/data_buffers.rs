@@ -124,11 +124,7 @@ pub struct IndexBuffer {
 }
 
 /// Creates a new index buffer
-pub fn create_index_buffer(
-	name: &str,
-	indices: &[u16],
-	gpu_instance: &GpuInstance,
-) -> IndexBuffer {
+pub fn create_index_buffer(name: &str, indices: &[u16], gpu_instance: &GpuInstance) -> IndexBuffer {
 	let buffer = gpu_instance
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {

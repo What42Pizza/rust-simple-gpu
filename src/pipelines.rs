@@ -3,8 +3,14 @@ use crate::{GpuInstance, IndexBuffer, Texture};
 
 
 /// Gets a wgpu pipeline layout that expects a specific number of texture inputs
-pub fn get_pipeline_layout<'a>(texture_input_count: u32, wgpu_pipeline_layouts: &'a mut Vec<wgpu::PipelineLayout>, uniforms_group_layout: &wgpu::BindGroupLayout, texture_group_layout: &wgpu::BindGroupLayout, wgpu_device: &wgpu::Device) -> &'a wgpu::PipelineLayout {
-	for i in wgpu_pipeline_layouts.len() as u32 ..= texture_input_count {
+pub fn get_pipeline_layout<'a>(
+	texture_input_count: u32,
+	wgpu_pipeline_layouts: &'a mut Vec<wgpu::PipelineLayout>,
+	uniforms_group_layout: &wgpu::BindGroupLayout,
+	texture_group_layout: &wgpu::BindGroupLayout,
+	wgpu_device: &wgpu::Device,
+) -> &'a wgpu::PipelineLayout {
+	for i in wgpu_pipeline_layouts.len() as u32..=texture_input_count {
 		let mut bind_group_layouts = vec![Some(uniforms_group_layout)];
 		for _ in 0..i {
 			bind_group_layouts.push(Some(texture_group_layout));
@@ -41,7 +47,13 @@ pub fn create_2d_pipeline(
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
-	let pipeline_layout = get_pipeline_layout(texture_input_count, &mut gpu_instance.wgpu_pipeline_layouts, &gpu_instance.wgpu_uniforms_bind_group_layout, &gpu_instance.wgpu_texture_bind_group_layout, &gpu_instance.wgpu_device);
+	let pipeline_layout = get_pipeline_layout(
+		texture_input_count,
+		&mut gpu_instance.wgpu_pipeline_layouts,
+		&gpu_instance.wgpu_uniforms_bind_group_layout,
+		&gpu_instance.wgpu_texture_bind_group_layout,
+		&gpu_instance.wgpu_device,
+	);
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -91,7 +103,13 @@ pub fn create_3d_pipeline(
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
-	let pipeline_layout = get_pipeline_layout(texture_input_count, &mut gpu_instance.wgpu_pipeline_layouts, &gpu_instance.wgpu_uniforms_bind_group_layout, &gpu_instance.wgpu_texture_bind_group_layout, &gpu_instance.wgpu_device);
+	let pipeline_layout = get_pipeline_layout(
+		texture_input_count,
+		&mut gpu_instance.wgpu_pipeline_layouts,
+		&gpu_instance.wgpu_uniforms_bind_group_layout,
+		&gpu_instance.wgpu_texture_bind_group_layout,
+		&gpu_instance.wgpu_device,
+	);
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
