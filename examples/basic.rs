@@ -163,18 +163,19 @@ fn main() -> Result<()> {
 		wgpu::PresentMode::AutoVsync,
 	);
 	let mut window_surface = window_surface?;
-	let mut depth_tex =
-		simple_gpu::create_depth_texture("main depth tex", window_size, wgpu::FilterMode::Linear, &gpu_instance);
+	let mut depth_tex = simple_gpu::create_depth_texture(
+		"main depth tex",
+		window_size,
+		wgpu::FilterMode::Linear,
+		&gpu_instance,
+	);
 
 	// shaders
 	let shaders_path = assets_path.join("shaders");
 	let main_vsh_shader =
 		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("main.vsh"), &gpu_instance, &[])?;
-	let main_fsh_shader = simple_gpu::load_glsl_fragment_shader(
-		&shaders_path.join("main.fsh"),
-		&gpu_instance,
-		&[],
-	)?;
+	let main_fsh_shader =
+		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("main.fsh"), &gpu_instance, &[])?;
 
 	// uniforms
 	let uniforms_buffer = simple_gpu::create_uniforms_buffer::<UniformsRawData>(&gpu_instance);

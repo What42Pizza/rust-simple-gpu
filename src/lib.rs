@@ -142,9 +142,9 @@ pub struct GpuInstance {
 /// # Errors
 ///
 /// This returns an error if [`wgpu::Instance::request_adapter()`] errors or if [`wgpu::Adapter::request_device()`] errors.
-/// 
+///
 /// # Panics
-/// 
+///
 /// This only panics if neither the "glsl" nor "wgsl" features are enabled
 #[inline]
 pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<GpuInstance> {
@@ -290,7 +290,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		label: Some("mipmap_vertex_shader"),
 		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
 	});
-	
+
 	#[cfg(feature = "glsl")]
 	let mipmap_fragment_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
 		label: Some("mipmap_fragment_shader"),
@@ -305,7 +305,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		label: Some("mipmap_fragment_shader"),
 		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
 	});
-	
+
 	#[cfg(not(any(feature = "glsl", feature = "wgsl")))]
 	compile_error!("Either the \"glsl\" or \"wgsl\" features must be enabled!");
 

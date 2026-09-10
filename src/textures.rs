@@ -108,11 +108,13 @@ pub fn create_texture(
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(if filter_mode == wgpu::FilterMode::Linear {
-						&gpu_instance.wgpu_filtering_sampler
-					} else {
-						&gpu_instance.wgpu_non_filtering_sampler
-					}),
+					resource: wgpu::BindingResource::Sampler(
+						if filter_mode == wgpu::FilterMode::Linear {
+							&gpu_instance.wgpu_filtering_sampler
+						} else {
+							&gpu_instance.wgpu_non_filtering_sampler
+						},
+					),
 				},
 			],
 		});
@@ -134,7 +136,12 @@ pub fn create_texture(
 /// - The mip level is always 1
 #[must_use]
 #[inline]
-pub fn create_depth_texture(name: &str, size: (u32, u32), filter_mode: wgpu::FilterMode, gpu_instance: &GpuInstance) -> Texture {
+pub fn create_depth_texture(
+	name: &str,
+	size: (u32, u32),
+	filter_mode: wgpu::FilterMode,
+	gpu_instance: &GpuInstance,
+) -> Texture {
 	let format = wgpu::TextureFormat::Depth24Plus;
 
 	let texture = gpu_instance
@@ -168,11 +175,13 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), filter_mode: wgpu::Fil
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(if filter_mode == wgpu::FilterMode::Linear {
-						&gpu_instance.wgpu_filtering_sampler
-					} else {
-						&gpu_instance.wgpu_non_filtering_sampler
-					}),
+					resource: wgpu::BindingResource::Sampler(
+						if filter_mode == wgpu::FilterMode::Linear {
+							&gpu_instance.wgpu_filtering_sampler
+						} else {
+							&gpu_instance.wgpu_non_filtering_sampler
+						},
+					),
 				},
 			],
 		});
