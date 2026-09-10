@@ -13,9 +13,6 @@ categories = [ "multimedia", "rendering", "rendering::graphics-api", "graphics",
 	version = "29.*" # NOTE: wgpu 30.* seems to have some pretty bad input lag problems
 	default-features = false
 	features = [ "std", "dx12", "metal", "gles", "vulkan" ]
-[dependencies.raw-window-handle]
-	version = "0.6.*"
-	default-features = false
 [dependencies.pollster]
 	version = "1.*"
 	default-features = false

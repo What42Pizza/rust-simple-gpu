@@ -21,6 +21,8 @@ pub struct Texture {
 	pub wgpu_bind_group: wgpu::BindGroup,
 	/// Specifies the format of the texture's texels (aka pixels)
 	pub wgpu_format: wgpu::TextureFormat,
+	/// Specified the number of mip levels this texture contains (must be at least 1)
+	pub mip_count: u32,
 }
 
 /// Creates a new texture with a given size and format. More:
@@ -32,8 +34,8 @@ pub fn create_texture(
 	name: &str,
 	size: (u32, u32),
 	format: wgpu::TextureFormat,
+	mip_count: u32,
 	gpu_instance: &GpuInstance,
-	is_render_target: bool,
 ) -> Texture {
 	let texture = gpu_instance
 		.wgpu_device
@@ -44,15 +46,11 @@ pub fn create_texture(
 				height: size.1,
 				depth_or_array_layers: 1,
 			},
-			mip_level_count: 1,
+			mip_level_count: mip_count,
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
 			format,
-			usage: if is_render_target {
-				wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT
-			} else {
-				wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST
-			},
+			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::RENDER_ATTACHMENT,
 			view_formats: &[],
 		});
 
@@ -86,6 +84,7 @@ pub fn create_texture(
 		wgpu_view: view,
 		wgpu_bind_group: bind_group,
 		wgpu_format: format,
+		mip_count,
 	}
 }
 
@@ -142,6 +141,7 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInst
 		wgpu_view: view,
 		wgpu_bind_group: bind_group,
 		wgpu_format: format,
+		mip_count: 1,
 	}
 }
 
@@ -198,7 +198,7 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 ///
 /// This errors if [`image::open()`] errors or if it cannot get the file name from the path.
 #[cfg(feature = "image")]
-pub fn load_texture_from_path(path: &Path, gpu_instance: &GpuInstance) -> Result<Texture> {
+pub fn load_texture_from_path(path: &Path, mip_count: u32, gpu_instance: &GpuInstance) -> Result<Texture> {
 	let texture_image =
 		image::open(path).with_context(|| format!("Failed to read file {}", path.display()))?;
 	let size = (texture_image.width(), texture_image.height());
@@ -209,8 +209,8 @@ pub fn load_texture_from_path(path: &Path, gpu_instance: &GpuInstance) -> Result
 		&file_name,
 		size,
 		wgpu::TextureFormat::Rgba8Unorm,
+		mip_count,
 		gpu_instance,
-		false,
 	);
 	update_texture(&texture, &texture_data, gpu_instance);
 	Ok(texture)
@@ -243,9 +243,9 @@ pub struct AtlasAllocator {
 
 /// Builds an atlas out of many textures
 ///
-/// The input is a list of textures, with each item having a specified width, height, and pixel data. Also, the mip value works in the same way as in texture samplers, `map_mip` being 0 means no mip levels, 1 means there's one extra mip level that's half the texture width & height, and so on
+/// The input is a list of textures, with each item having a specified width, height, and pixel data. You also have to specify the pixel format and mip count
 ///
-/// Important note: the returned allocator is scaled down by `2 ^ max_mip` so that the allocated positions are automatically aligned to a mip boundary. This means that if you want to use the allocator yourself, you need to shift the output locations right by `max_mip`
+/// Important note: the returned allocator is scaled down by `2 ^ (mip_count - 1)` so that the allocated positions are automatically aligned to a mip boundary. This means that if you want to use the allocator yourself, you need to shift the output locations right by `mip_count - 1`
 ///
 /// # Panics
 ///
@@ -256,7 +256,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	name: &str,
 	textures: &[(u32, u32, Data)],
 	format: wgpu::TextureFormat,
-	max_mip: u32,
+	mip_count: u32,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &GpuInstance,
 ) -> (Texture, Vec<AtlasLocation>, AtlasAllocator) {
@@ -266,6 +266,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 		.map(|(i, (width, height, data))| (*width, *height, data, i))
 		.collect::<Vec<_>>();
 	textures.sort_by_key(|(width, height, _data, _i)| u32::MAX - width * height);
+	let max_mip = mip_count - 1;
 
 	let bytes_per_pixel = format.block_copy_size(None).unwrap_or_else(|| {
 		panic!("Failed to get the byte size of the given texture format: {format:?}")
@@ -335,8 +336,8 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 			name,
 			(atlas_width, atlas_height),
 			format,
+			mip_count,
 			gpu_instance,
-			false,
 		);
 
 		// note: fills with fully transparent black
@@ -351,7 +352,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 				(*width, *height),
 				&mut atlas_tex_data,
 				(atlas_width, atlas_height),
-				max_mip,
+				mip_count,
 				bytes_per_pixel,
 			);
 		}
@@ -372,9 +373,10 @@ pub fn place_texture_in_atlas(
 	size: (u32, u32),
 	atlas_data: &mut [u8],
 	atlas_size: (u32, u32),
-	max_mip: u32,
+	mip_count: u32,
 	bytes_per_pixel: u32,
 ) {
+	let max_mip = mip_count - 1;
 	debug_assert_eq!(
 		tex_data.len(),
 		(size.0 * size.1 * bytes_per_pixel) as usize,
@@ -484,7 +486,7 @@ pub fn create_texture_atlas_from_path(
 	name: &str,
 	path: &Path,
 	recursive: bool,
-	max_mip: u32,
+	mip_count: u32,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &GpuInstance,
 ) -> Result<(Texture, HashMap<PathBuf, AtlasLocation>, AtlasAllocator)> {
@@ -520,7 +522,7 @@ pub fn create_texture_atlas_from_path(
 		name,
 		&textures,
 		wgpu::TextureFormat::Rgba8Unorm,
-		max_mip,
+		mip_count,
 		min_size,
 		gpu_instance,
 	);

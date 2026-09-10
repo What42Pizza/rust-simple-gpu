@@ -7,6 +7,41 @@
 //! # Simple Gpu
 //!
 //! This is a tiny abstraction over WGPU that is inspired by the simplicity and directness of multimedia libraries like raylib and SDL. The main goal of this crate is to provide a simple and convenient way of rendering custom data with custom shaders.
+//! 
+//! ## Full walkthrough
+//! 
+//! - Create a [`GpuInstance`] with [`init()`]
+//! - Get a window's surface with [`get_window_surface_mut()`]
+//! - Load shaders with:
+//!   - [`load_glsl_vertex_shader()`] (requires the "glsl" feature, enabled by default)
+//!   - [`load_glsl_fragment_shader()`] (requires the "glsl" feature, enabled by default)
+//!   - [`load_wgsl_shader()`] (requires the "wgsl" feature)
+//! - Load textures with:
+//!   - [`load_texture_from_path()`] (requires the "image" feature, enabled by default)
+//!   - [`create_texture()`] and [`update_texture()`]
+//!   - [`create_texture_atlas()`] (requires the "atlas" feature)
+//!   - [`create_texture_atlas_from_path()`] (requires the "image" and "atlas" features)
+//! - Create a depth texture (optional) with [`create_depth_texture()`]
+//! - Create a uniforms buffer with [`create_uniforms_buffer()`]
+//! - Create a pipeline with:
+//!   - [`create_2d_pipeline`]
+//!   - [`create_3d_pipeline`]
+//! - Create a vertex buffer with:
+//!   - [`init_vertex_buffer`]
+//!   - [`create_vertex_buffer()`], add data, then [`sync_vertex_buffer()`]
+//! - Create an index buffer (optional) with [`create_index_buffer`]
+//! - Create an instance buffer (optional), uses the same functions as vertex buffers
+//! - To start rendering a frame, get the window surface's texture and a command encoder with one of:
+//!   - [`start_frame()`]
+//!   - [`get_surface_texture()`] and [`start_command_encoder`]
+//! - Start a render pass with:
+//!   - [`start_2d_render_pass()`]
+//!   - [`start_3d_render_pass()`]
+//! - Render your data with your shaders with [`render()`]
+//! - Finish a render pass with [`finish_render_pass()`]
+//! - Finish the frame with one of:
+//!   - [`finish_frame()`]
+//!   - [`submit_gpu_commands()`] then [`present_frame`]
 //!
 //! ## See the [example program](https://github.com/What42Pizza/rust-simple-gpu/blob/main/examples/basic.rs)
 
@@ -68,14 +103,16 @@ pub struct GpuInstance {
 	/// - Binding 1: texture sampler (filtering)
 	/// - Binding 2: texture sampler (non-filtering)
 	pub wgpu_depth_texture_bind_group_layout: wgpu::BindGroupLayout,
-	/// This is the default pipeline layout used to render everything. More:
+	/// These are the default pipeline layouts used to render everything. More:
+	/// 
+	/// - The pipeline at index 0 has 0 texture inputs, at index 1 has 1 texture input, and so on
 	///
 	/// - Its bindings are:
 	/// - Bind group 0 binding 0: buffer (type: uniforms)
-	/// - Bind group 1 binding 0: texture view
-	/// - Bind group 1 binding 1: texture sampler (filtering)
-	/// - Bind group 1 binding 2: texture sampler (non-filtering)
-	pub wgpu_pipeline_layout: wgpu::PipelineLayout,
+	/// - Bind group n binding 0: texture view
+	/// - Bind group n binding 1: texture sampler (filtering)
+	/// - Bind group n binding 2: texture sampler (non-filtering)
+	pub wgpu_pipeline_layouts: Vec<wgpu::PipelineLayout>,
 }
 
 
@@ -193,15 +230,6 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 			],
 		});
 
-	let pipeline_layout = wgpu_device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-		label: Some("main_pipeline_layout"),
-		bind_group_layouts: &[
-			Some(&uniforms_bind_group_layout),
-			Some(&texture_bind_group_layout),
-		],
-		immediate_size: 0,
-	});
-
 	Ok(GpuInstance {
 		wgpu_instance,
 		wgpu_adapter,
@@ -212,7 +240,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		wgpu_uniforms_bind_group_layout: uniforms_bind_group_layout,
 		wgpu_texture_bind_group_layout: texture_bind_group_layout,
 		wgpu_depth_texture_bind_group_layout: depth_texture_bind_group_layout,
-		wgpu_pipeline_layout: pipeline_layout,
+		wgpu_pipeline_layouts: vec![],
 	})
 }
 

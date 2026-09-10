@@ -13,11 +13,11 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
 ### What sets this apart:
 
 - This focuses entirely on "vertex data -> vertex shader -> fragment shader -> texture" rendering.
-- The main function of this crate is to give a good set of defaults, and this sticks very closely to wgpu's types and function calls. In fact, you could easily transition from using this crate to using wgpu directly wherever needed.
+- The main purpose of this crate is to give a good set of defaults, and this otherwise sticks very closely to wgpu's types and function calls. In fact, you could easily transition from using this crate to using wgpu directly wherever needed.
 - This crate is extremely hackable, meaning you can easily edit the crate's code to fit your own needs. This is because:
   - All type fields are public, meaning you have unrestricted access to use and/or replace the underlying wgpu types.
   - This sticks very closely to wgpu's type and function calls (as stated earlier).
-  - This is licensed using CC0, meaning this is dedicated to the public domain and you can copy the crate's code into your own codebase without any restrictions or requirements.
+  - This is licensed using CC0, meaning this is dedicated to the public domain.
 
 ### Workflow / full walkthrough:
 
@@ -45,7 +45,7 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
 
 ### What this crate decides for you:
 
-- Every shader has 4 bindings:
+- Every shader has these 4 bindings:
   - Bind group 0 binding 0: the uniforms buffer
   - Bind group 1 binding 0: the texture being rendered (which can / should be a texture atlas)
   - Bind group 1 binding 1: a bilinear sampler

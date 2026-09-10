@@ -1,6 +1,6 @@
 use crate::GpuInstance;
 use anyhow::{Ok, Result};
-use raw_window_handle::{
+use wgpu::rwh::{
 	DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
 };
 

@@ -2,6 +2,25 @@ use crate::{GpuInstance, IndexBuffer, Texture};
 
 
 
+/// Gets a wgpu pipeline layout that expects a specific number of texture inputs
+pub fn get_pipeline_layout<'a>(texture_input_count: u32, wgpu_pipeline_layouts: &'a mut Vec<wgpu::PipelineLayout>, uniforms_group_layout: &wgpu::BindGroupLayout, texture_group_layout: &wgpu::BindGroupLayout, wgpu_device: &wgpu::Device) -> &'a wgpu::PipelineLayout {
+	for i in wgpu_pipeline_layouts.len() as u32 ..= texture_input_count {
+		let mut bind_group_layouts = vec![Some(uniforms_group_layout)];
+		for _ in 0..i {
+			bind_group_layouts.push(Some(texture_group_layout));
+		}
+		let pipeline_layout = wgpu_device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: Some("main_pipeline_layout"),
+			bind_group_layouts: &bind_group_layouts,
+			immediate_size: 0,
+		});
+		wgpu_pipeline_layouts.push(pipeline_layout);
+	}
+	&wgpu_pipeline_layouts[texture_input_count as usize]
+}
+
+
+
 /// Creates a basic 2d rendering pipeline, with no back-face culling and the vertex list treated as a triangles list
 ///
 /// # Panics
@@ -14,18 +33,20 @@ pub fn create_2d_pipeline(
 	vertex_shader: &wgpu::ShaderModule,
 	fragment_shader: &wgpu::ShaderModule,
 	output_format: &wgpu::TextureFormat,
-	gpu_instance: &GpuInstance,
+	texture_input_count: u32,
+	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
 	/* This is not needed in future version of wgpu */
 	let vertex_buffer_layouts = vertex_buffer_layouts
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
+	let pipeline_layout = get_pipeline_layout(texture_input_count, &mut gpu_instance.wgpu_pipeline_layouts, &gpu_instance.wgpu_uniforms_bind_group_layout, &gpu_instance.wgpu_texture_bind_group_layout, &gpu_instance.wgpu_device);
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some(name),
-			layout: Some(&gpu_instance.wgpu_pipeline_layout),
+			layout: Some(pipeline_layout),
 			vertex: wgpu::VertexState {
 				module: vertex_shader,
 				entry_point: None,
@@ -62,18 +83,20 @@ pub fn create_3d_pipeline(
 	vertex_shader: &wgpu::ShaderModule,
 	fragment_shader: &wgpu::ShaderModule,
 	output_format: &wgpu::TextureFormat,
-	gpu_instance: &GpuInstance,
+	texture_input_count: u32,
+	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
 	/* This is not needed in future version of wgpu */
 	let vertex_buffer_layouts = vertex_buffer_layouts
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
+	let pipeline_layout = get_pipeline_layout(texture_input_count, &mut gpu_instance.wgpu_pipeline_layouts, &gpu_instance.wgpu_uniforms_bind_group_layout, &gpu_instance.wgpu_texture_bind_group_layout, &gpu_instance.wgpu_device);
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some(name),
-			layout: Some(&gpu_instance.wgpu_pipeline_layout),
+			layout: Some(pipeline_layout),
 			vertex: wgpu::VertexState {
 				module: vertex_shader,
 				entry_point: None,
@@ -209,14 +232,16 @@ pub fn render(
 	pipeline: &wgpu::RenderPipeline,
 	vertex_buffers: &[&wgpu::Buffer],
 	index_buffer: Option<&IndexBuffer>,
-	texture_input: &Texture,
+	textures: &[&Texture],
 	uniforms: &wgpu::BindGroup,
 	vertex_count: u32,
 	instance_count: u32,
 ) {
 	render_pass.set_pipeline(pipeline);
 	render_pass.set_bind_group(0, uniforms, &[]);
-	render_pass.set_bind_group(1, &texture_input.wgpu_bind_group, &[]);
+	for (i, texture) in textures.iter().enumerate() {
+		render_pass.set_bind_group(i as u32 + 1, &texture.wgpu_bind_group, &[]);
+	}
 
 	for (i, buffer) in vertex_buffers.iter().enumerate() {
 		#[allow(clippy::cast_possible_truncation)]

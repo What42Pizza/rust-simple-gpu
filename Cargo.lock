@@ -1250,7 +1250,6 @@ dependencies = [
  "image",
  "log",
  "pollster",
- "raw-window-handle",
  "sdl3",
  "wgpu",
 ]

@@ -71,9 +71,9 @@ struct ProgramData {
 	camera: CameraData,
 	aspect_ratio: f32,
 
-	main_vertex_buffer: simple_gpu::VertexBuffer<VertexData>,
+	vertex_buffer: simple_gpu::VertexBuffer<VertexData>,
 	main_index_buffer: simple_gpu::IndexBuffer,
-	main_instance_buffer: simple_gpu::VertexBuffer<InstanceData>,
+	instance_buffer: simple_gpu::VertexBuffer<InstanceData>,
 	textures: Textures,
 
 	uniforms_buffer: simple_gpu::UniformsBuffer<UniformsRawData>,
@@ -153,7 +153,7 @@ fn main() -> Result<()> {
 	let mut event_pump = sdl.event_pump()?;
 
 	// basics
-	let gpu_instance = simple_gpu::init(wgpu::Limits::defaults(), wgpu::MemoryHints::Performance)?;
+	let mut gpu_instance = simple_gpu::init(wgpu::Limits::defaults(), wgpu::MemoryHints::Performance)?;
 	let (window, window_surface) = simple_gpu::get_window_surface_mut(
 		&gpu_instance,
 		&mut window,
@@ -181,7 +181,7 @@ fn main() -> Result<()> {
 	// textures
 	let textures_path = assets_path.join("textures");
 	let mut wall_tex =
-		simple_gpu::load_texture_from_path(&textures_path.join("wall.png"), &gpu_instance)?;
+		simple_gpu::load_texture_from_path(&textures_path.join("wall.png"), 1, &gpu_instance)?;
 
 	// pipeline
 	let main_pipeline = simple_gpu::create_3d_pipeline(
@@ -193,7 +193,8 @@ fn main() -> Result<()> {
 		&main_vsh_shader,
 		&main_fsh_shader,
 		&window_surface.wgpu_format,
-		&gpu_instance,
+		1,
+		&mut gpu_instance,
 	);
 
 	// vertex data
@@ -243,7 +244,7 @@ fn main() -> Result<()> {
 	);
 
 	// assemble program's data
-	let mut program_data = ProgramData {
+	let mut data = ProgramData {
 		should_quit: false,
 		last_dt_instant: Instant::now(),
 
@@ -257,9 +258,9 @@ fn main() -> Result<()> {
 		},
 		aspect_ratio: window_size.0 as f32 / window_size.1 as f32,
 
-		main_vertex_buffer,
+		vertex_buffer: main_vertex_buffer,
 		main_index_buffer,
-		main_instance_buffer,
+		instance_buffer: main_instance_buffer,
 		textures: Textures { wall_tex },
 
 		uniforms_buffer,
@@ -268,13 +269,13 @@ fn main() -> Result<()> {
 
 
 	window.show();
-	while !program_data.should_quit {
+	while !data.should_quit {
 		// initial update
 		let new_dt_instant = Instant::now();
 		let dt = new_dt_instant
-			.duration_since(program_data.last_dt_instant)
+			.duration_since(data.last_dt_instant)
 			.as_secs_f32();
-		program_data.last_dt_instant = new_dt_instant;
+		data.last_dt_instant = new_dt_instant;
 
 		// handle events
 		for event in event_pump.poll_iter() {
@@ -296,7 +297,7 @@ fn main() -> Result<()> {
 						window.size(),
 						&gpu_instance,
 					);
-					program_data.aspect_ratio = new_width as f32 / new_height as f32;
+					data.aspect_ratio = new_width as f32 / new_height as f32;
 				}
 				Event::Quit { .. }
 				| Event::Window {
@@ -308,7 +309,7 @@ fn main() -> Result<()> {
 					..
 				} => {
 					println!("closing");
-					program_data.should_quit = true;
+					data.should_quit = true;
 				}
 				e => {
 					info!("Unknown event: {e:?}");
@@ -319,34 +320,34 @@ fn main() -> Result<()> {
 		// update
 		let keyboard_state = KeyboardState::new(&event_pump);
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::A) {
-			program_data.camera.pos.x -= 0.75 * dt;
+			data.camera.pos.x -= 0.75 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::D) {
-			program_data.camera.pos.x += 0.75 * dt;
+			data.camera.pos.x += 0.75 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::W) {
-			program_data.camera.pos.z -= 0.75 * dt;
+			data.camera.pos.z -= 0.75 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::S) {
-			program_data.camera.pos.z += 0.75 * dt;
+			data.camera.pos.z += 0.75 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::Q) {
-			program_data.camera.rot_xz -= 0.25 * dt;
+			data.camera.rot_xz -= 0.25 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::E) {
-			program_data.camera.rot_xz += 0.25 * dt;
+			data.camera.rot_xz += 0.25 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::Space) {
-			program_data.camera.pos.y += 0.75 * dt;
+			data.camera.pos.y += 0.75 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::LShift) {
-			program_data.camera.pos.y -= 0.75 * dt;
+			data.camera.pos.y -= 0.75 * dt;
 		}
 
 		// render
-		uniforms_raw_data.update(&program_data);
+		uniforms_raw_data.update(&data);
 		simple_gpu::update_uniforms_buffer(
-			&program_data.uniforms_buffer,
+			&data.uniforms_buffer,
 			&uniforms_raw_data,
 			&gpu_instance,
 		);
@@ -383,14 +384,16 @@ fn main() -> Result<()> {
 			&mut render_pass,
 			&main_pipeline,
 			&[
-				&program_data.main_vertex_buffer.wgpu_buffer,
-				&program_data.main_instance_buffer.wgpu_buffer,
+				&data.vertex_buffer.wgpu_buffer,
+				&data.instance_buffer.wgpu_buffer,
 			],
-			Some(&program_data.main_index_buffer),
-			&program_data.textures.wall_tex,
-			&program_data.uniforms_buffer.wgpu_bind_group,
-			program_data.main_vertex_buffer.wgpu_buffer_len,
-			program_data.main_instance_buffer.wgpu_buffer_len,
+			Some(&data.main_index_buffer),
+			&[
+				&data.textures.wall_tex,
+			],
+			&data.uniforms_buffer.wgpu_bind_group,
+			data.vertex_buffer.wgpu_buffer_len,
+			data.instance_buffer.wgpu_buffer_len,
 		);
 
 		simple_gpu::finish_render_pass(render_pass);
