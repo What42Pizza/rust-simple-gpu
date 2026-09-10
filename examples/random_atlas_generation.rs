@@ -155,6 +155,7 @@ fn make_atlas(gpu_instance: &simple_gpu::GpuInstance) -> simple_gpu::Texture {
 		"main atlas",
 		&atlas_textures,
 		wgpu::TextureFormat::Rgba8Unorm,
+		None,
 		4,
 		None,
 		&gpu_instance,

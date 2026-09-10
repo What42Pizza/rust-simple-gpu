@@ -182,8 +182,12 @@ fn main() -> Result<()> {
 
 	// textures
 	let textures_path = assets_path.join("textures");
-	let mut wall_tex =
-		simple_gpu::load_texture_from_path(&textures_path.join("wall.png"), 1, &gpu_instance)?;
+	let mut wall_tex = simple_gpu::load_texture_from_path(
+		&textures_path.join("wall.png"),
+		None,
+		1,
+		&gpu_instance,
+	)?;
 
 	// pipeline
 	let main_pipeline = simple_gpu::create_3d_pipeline(

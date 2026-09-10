@@ -1,9 +1,8 @@
 use crate::GpuInstance;
+use anyhow::{Context, Ok, Result, anyhow};
 
 #[cfg(feature = "image")]
 use crate::file_name;
-use anyhow::{Context, Ok, Result, anyhow};
-#[cfg(feature = "image")]
 #[cfg(feature = "image")]
 use std::path::Path;
 #[cfg(all(feature = "atlas", feature = "image"))]
@@ -27,13 +26,17 @@ pub struct Texture {
 
 /// Creates a new texture with a given size and format. More:
 ///
-/// - If `is_render_target` is true, [`wgpu::TextureUsages::RENDER_ATTACHMENT`] is given instead of [`wgpu::TextureUsages::COPY_DST`], and [`wgpu::TextureUsages::TEXTURE_BINDING`] is always given
+/// - If `samplers` is `None`, it will be created with the default samplers:
+///   - A bilinear sampler that clamps coordinates
+///   - A nearest sampler that clamps coordinates
+/// - `mip_count` must be at least 1
 #[must_use]
 #[inline]
 pub fn create_texture(
 	name: &str,
 	size: (u32, u32),
 	format: wgpu::TextureFormat,
+	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
 	mip_count: u32,
 	gpu_instance: &GpuInstance,
 ) -> Texture {
@@ -58,6 +61,11 @@ pub fn create_texture(
 
 	let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+	let samplers = samplers.unwrap_or((
+		&gpu_instance.wgpu_filtering_sampler,
+		&gpu_instance.wgpu_non_filtering_sampler,
+	));
+
 	let bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -70,13 +78,11 @@ pub fn create_texture(
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_filtering_sampler),
+					resource: wgpu::BindingResource::Sampler(samplers.0),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: wgpu::BindingResource::Sampler(
-						&gpu_instance.wgpu_non_filtering_sampler,
-					),
+					resource: wgpu::BindingResource::Sampler(samplers.1),
 				},
 			],
 		});
@@ -90,7 +96,10 @@ pub fn create_texture(
 	}
 }
 
-/// Creates a new depth texture with a given size
+/// Creates a new depth texture with a given size. More:
+///
+/// - This always uses the default samplers
+/// - The mip level is always 1
 #[must_use]
 #[inline]
 pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInstance) -> Texture {
@@ -192,7 +201,11 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 
 /// Creates a texture from a given file path. More:
 ///
-/// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`].
+/// - If `samplers` is `None`, it will be created with the default samplers:
+///   - A bilinear sampler that clamps coordinates
+///   - A nearest sampler that clamps coordinates
+/// - `mip_count` must be at least 1
+/// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`]
 /// - This is only available when the "image" feature is enabled
 /// - By default, only png, jpeg, webp, bmp, and tga formats are enabled. If needed, you can enable more image formats by adding this to your Cargo.toml: `image = { version = "...", features = [ .. ] }` (note: it needs to be the same version that this crate uses for the features to combine)
 ///
@@ -202,6 +215,7 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 #[cfg(feature = "image")]
 pub fn load_texture_from_path(
 	path: &Path,
+	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
 	mip_count: u32,
 	gpu_instance: &GpuInstance,
 ) -> Result<Texture> {
@@ -215,6 +229,7 @@ pub fn load_texture_from_path(
 		&file_name,
 		size,
 		wgpu::TextureFormat::Rgba8Unorm,
+		samplers,
 		mip_count,
 		gpu_instance,
 	);
@@ -253,6 +268,13 @@ pub struct AtlasAllocator {
 ///
 /// Important note: the returned allocator is scaled down by `2 ^ (mip_count - 1)` so that the allocated positions are automatically aligned to a mip boundary. This means that if you want to use the allocator yourself, you need to shift the output locations right by `mip_count - 1`
 ///
+/// - If `samplers` is `None`, it will be created with the default samplers:
+///   - A bilinear sampler that clamps coordinates
+///   - A nearest sampler that clamps coordinates
+/// - `mip_count` must be at least 1
+/// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`]
+/// - This is only available when the "atlas" feature is enabled
+///
 /// # Panics
 ///
 /// This will panic if the given format does not have a known block copy size (aka pixel byte size), see [`wgpu::TextureFormat::block_copy_size()`] for more.
@@ -262,6 +284,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	name: &str,
 	textures: &[(u32, u32, Data)],
 	format: wgpu::TextureFormat,
+	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
 	mip_count: u32,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &GpuInstance,
@@ -342,6 +365,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 			name,
 			(atlas_width, atlas_height),
 			format,
+			samplers,
 			mip_count,
 			gpu_instance,
 		);
@@ -372,7 +396,8 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	}
 }
 
-/// Places a texture's pixel data inside the pixel data of a texture atlas, accounting for mip mapping
+/// Places a texture's pixel data inside the pixel data of a texture atlas, with padding for mip mapping
+#[cfg(feature = "atlas")]
 pub fn place_texture_in_atlas(
 	tex_data: &[u8],
 	pos: (u32, u32),
@@ -472,6 +497,7 @@ pub fn place_texture_in_atlas(
 }
 
 /// Rounds a value up to the nearest `1 << max_mip`. For example, `fit_mip(20, 3)` will return 32 because `1 << 3` is 16 and 32 is the lowest multiple of 16 that can fit 20
+#[cfg(feature = "atlas")]
 #[must_use]
 pub const fn fit_mip(v: u32, max_mip: u32) -> u32 {
 	if v == 0 {
@@ -484,6 +510,14 @@ pub const fn fit_mip(v: u32, max_mip: u32) -> u32 {
 
 /// Creates a texture atlas from a given folder
 ///
+/// - If `samplers` is `None`, it will be created with the default samplers:
+///   - A bilinear sampler that clamps coordinates
+///   - A nearest sampler that clamps coordinates
+/// - `mip_count` must be at least 1
+/// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`]
+/// - This is only available when the both the "image" and "atlas" features are enabled
+/// - By default, only png, jpeg, webp, bmp, and tga formats are enabled. If needed, you can enable more image formats by adding this to your Cargo.toml: `image = { version = "...", features = [ .. ] }` (note: it needs to be the same version that this crate uses for the features to combine)
+///
 /// # Errors
 ///
 /// This only returns an error if [`std::fs::read_dir()`] errors.
@@ -492,6 +526,7 @@ pub fn create_texture_atlas_from_path(
 	name: &str,
 	path: &Path,
 	recursive: bool,
+	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
 	mip_count: u32,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &GpuInstance,
@@ -528,6 +563,7 @@ pub fn create_texture_atlas_from_path(
 		name,
 		&textures,
 		wgpu::TextureFormat::Rgba8Unorm,
+		samplers,
 		mip_count,
 		min_size,
 		gpu_instance,

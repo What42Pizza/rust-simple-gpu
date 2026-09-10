@@ -45,20 +45,21 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
 
 ### What this crate decides for you:
 
-- Every shader has these 4 bindings:
-  - Bind group 0 binding 0: the uniforms buffer
-  - Bind group 1 binding 0: the texture being rendered (which can / should be a texture atlas)
-  - Bind group 1 binding 1: a bilinear sampler
-  - Bind group 1 binding 2: a nearest sampler
+- The bind groups are:
+  - Bind group 0:
+    - Binding 0: the uniforms buffer
+  - All other bind groups:
+    - Binding 0: a texture view (which can / should be a texture atlas)
+    - Binding 1: a bilinear sampler
+    - Binding 2: a nearest sampler
 - 3D rendering has:
   - Counter-clockwise triangles with back-face culling
   - A 24-bit float depth buffer
-- Only 2D textures will be used
+- Only 2D textures are used
 - Samplers always clamp coordinates
 - All triangles are made from triangle lists (this is the `wgpu::PrimitiveTopology`)
 - Vertex index buffers use 16-bit indices instead of 32-bit
 - Glsl is the default shader language (though there are utility functions for wgsl too)
 - The window's surface texture must support an srgb output
-- Textures can either be updated by the cpu or rendered to by the gpu, but not both
 - Vertex input buffers can only be updated by the cpu and read by vertex shaders
 - A whole lot of other boring details (color blending is enabled, fragment shaders store their outputs, etc)
