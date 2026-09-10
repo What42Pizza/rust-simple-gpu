@@ -164,14 +164,14 @@ fn main() -> Result<()> {
 	);
 	let mut window_surface = window_surface?;
 	let mut depth_tex =
-		simple_gpu::create_depth_texture("main depth tex", window_size, &gpu_instance);
+		simple_gpu::create_depth_texture("main depth tex", window_size, wgpu::FilterMode::Linear, &gpu_instance);
 
 	// shaders
 	let shaders_path = assets_path.join("shaders");
 	let main_vsh_shader =
 		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("main.vsh"), &gpu_instance, &[])?;
 	let main_fsh_shader = simple_gpu::load_glsl_fragment_shader(
-		&shaders_path.join("main_linear_sample.fsh"),
+		&shaders_path.join("main.fsh"),
 		&gpu_instance,
 		&[],
 	)?;
@@ -184,7 +184,7 @@ fn main() -> Result<()> {
 	let textures_path = assets_path.join("textures");
 	let mut wall_tex = simple_gpu::load_texture_from_path(
 		&textures_path.join("wall.png"),
-		None,
+		wgpu::FilterMode::Linear,
 		1,
 		&gpu_instance,
 	)?;
@@ -198,7 +198,7 @@ fn main() -> Result<()> {
 		],
 		&main_vsh_shader,
 		&main_fsh_shader,
-		&window_surface.wgpu_format,
+		window_surface.wgpu_format,
 		1,
 		&mut gpu_instance,
 	);
@@ -301,6 +301,7 @@ fn main() -> Result<()> {
 					depth_tex = simple_gpu::create_depth_texture(
 						"main depth texture",
 						window.size(),
+						wgpu::FilterMode::Linear,
 						&gpu_instance,
 					);
 					data.aspect_ratio = new_width as f32 / new_height as f32;
@@ -371,6 +372,7 @@ fn main() -> Result<()> {
 					depth_tex = simple_gpu::create_depth_texture(
 						"main depth texture",
 						window.size(),
+						wgpu::FilterMode::Linear,
 						&gpu_instance,
 					);
 					continue;

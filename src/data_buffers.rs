@@ -65,19 +65,20 @@ pub fn init_vertex_buffer<VertexRawData: BufferItemRawData>(
 	gpu_instance: &GpuInstance,
 ) -> VertexBuffer<VertexRawData> {
 	let items = items.into();
+	#[allow(clippy::cast_possible_truncation)]
 	let items_len = items.len() as u32;
 	let name = name.into();
 	let buffer = gpu_instance
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&name),
-			size: items_len as u64 * std::mem::size_of::<VertexRawData>() as u64,
+			size: u64::from(items_len) * std::mem::size_of::<VertexRawData>() as u64,
 			usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
 	gpu_instance
 		.wgpu_queue
-		.write_buffer(&buffer, 0, bytemuck::cast_slice(&*items));
+		.write_buffer(&buffer, 0, bytemuck::cast_slice(&items));
 	VertexBuffer {
 		cpu_buffer: items,
 		wgpu_buffer: buffer,
@@ -90,6 +91,7 @@ pub fn init_vertex_buffer<VertexRawData: BufferItemRawData>(
 /// Sends the data in a [`VertexBuffer`]'s cpu-side buffer into its wgpu buffer
 ///
 /// Note: the wgpu buffer is automatically reallocated if it is not large enough
+#[allow(clippy::cast_possible_truncation)]
 pub fn sync_vertex_buffer<VertexRawData: BufferItemRawData>(
 	vertex_buffer: &mut VertexBuffer<VertexRawData>,
 	gpu_instance: &GpuInstance,
@@ -108,7 +110,7 @@ pub fn sync_vertex_buffer<VertexRawData: BufferItemRawData>(
 	gpu_instance.wgpu_queue.write_buffer(
 		&vertex_buffer.wgpu_buffer,
 		0,
-		bytemuck::cast_slice(&*vertex_buffer.cpu_buffer),
+		bytemuck::cast_slice(&vertex_buffer.cpu_buffer),
 	);
 	vertex_buffer.wgpu_buffer_len = vertex_buffer.cpu_buffer.len() as u32;
 }
@@ -124,6 +126,7 @@ pub struct IndexBuffer {
 }
 
 /// Creates a new index buffer
+#[must_use]
 pub fn create_index_buffer(name: &str, indices: &[u16], gpu_instance: &GpuInstance) -> IndexBuffer {
 	let buffer = gpu_instance
 		.wgpu_device
@@ -136,6 +139,7 @@ pub fn create_index_buffer(name: &str, indices: &[u16], gpu_instance: &GpuInstan
 	gpu_instance
 		.wgpu_queue
 		.write_buffer(&buffer, 0, bytemuck::cast_slice(indices));
+	#[allow(clippy::cast_possible_truncation)]
 	IndexBuffer {
 		wgpu_buffer: buffer,
 		count: indices.len() as u32,

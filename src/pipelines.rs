@@ -10,6 +10,7 @@ pub fn get_pipeline_layout<'a>(
 	texture_group_layout: &wgpu::BindGroupLayout,
 	wgpu_device: &wgpu::Device,
 ) -> &'a wgpu::PipelineLayout {
+	#[allow(clippy::cast_possible_truncation)]
 	for i in wgpu_pipeline_layouts.len() as u32..=texture_input_count {
 		let mut bind_group_layouts = vec![Some(uniforms_group_layout)];
 		for _ in 0..i {
@@ -38,7 +39,7 @@ pub fn create_2d_pipeline(
 	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
 	vertex_shader: &wgpu::ShaderModule,
 	fragment_shader: &wgpu::ShaderModule,
-	output_format: &wgpu::TextureFormat,
+	output_format: wgpu::TextureFormat,
 	texture_input_count: u32,
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
@@ -69,7 +70,7 @@ pub fn create_2d_pipeline(
 				module: fragment_shader,
 				entry_point: None,
 				targets: &[Some(wgpu::ColorTargetState {
-					format: *output_format,
+					format: output_format,
 					blend: Some(wgpu::BlendState::ALPHA_BLENDING),
 					write_mask: wgpu::ColorWrites::ALL,
 				})],
@@ -94,7 +95,7 @@ pub fn create_3d_pipeline(
 	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
 	vertex_shader: &wgpu::ShaderModule,
 	fragment_shader: &wgpu::ShaderModule,
-	output_format: &wgpu::TextureFormat,
+	output_format: wgpu::TextureFormat,
 	texture_input_count: u32,
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
@@ -125,7 +126,7 @@ pub fn create_3d_pipeline(
 				module: fragment_shader,
 				entry_point: None,
 				targets: &[Some(wgpu::ColorTargetState {
-					format: *output_format,
+					format: output_format,
 					blend: Some(wgpu::BlendState::ALPHA_BLENDING),
 					write_mask: wgpu::ColorWrites::ALL,
 				})],
@@ -258,6 +259,7 @@ pub fn render(
 	render_pass.set_pipeline(pipeline);
 	render_pass.set_bind_group(0, uniforms, &[]);
 	for (i, texture) in textures.iter().enumerate() {
+		#[allow(clippy::cast_possible_truncation)]
 		render_pass.set_bind_group(i as u32 + 1, &texture.wgpu_bind_group, &[]);
 	}
 

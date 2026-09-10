@@ -50,8 +50,7 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
     - Binding 0: the uniforms buffer
   - All other bind groups:
     - Binding 0: a texture view (which can / should be a texture atlas)
-    - Binding 1: a bilinear sampler
-    - Binding 2: a nearest sampler
+    - Binding 1: a texture sampler
 - 3D rendering has:
   - Counter-clockwise triangles with back-face culling
   - A 24-bit float depth buffer

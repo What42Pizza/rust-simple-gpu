@@ -14,8 +14,14 @@ use std::{collections::HashMap, path::PathBuf};
 pub struct Texture {
 	/// Holds the most basic data about the texture
 	pub wgpu_texture: wgpu::Texture,
-	/// Can be given to bind groups, which are then bound to the render pipeline
+	/// Can be given to bind groups, which are then bound to the render pipeline. More:
+	///
+	/// Note: this can be used within shaders to see all mipmap levels
 	pub wgpu_view: wgpu::TextureView,
+	/// Similar to `wgpu_view`, but contains one view for each mipmap level This is not needed for most operations and is only used for refilling mipmaps
+	pub wgpu_mipmap_views: Vec<wgpu::TextureView>,
+	/// Similar to `wgpu_bind_group`, but contains corresponding views from `wgpu_mipmap_view`. This is not needed for most operations and is only used for refilling mipmaps
+	pub wgpu_mipmap_bind_groups: Vec<wgpu::BindGroup>,
 	/// This is a bind group with just one binding, which is a view to this texture. The layout for this is taken from [`GpuInstance::wgpu_texture_bind_group_layout`]
 	pub wgpu_bind_group: wgpu::BindGroup,
 	/// Specifies the format of the texture's texels (aka pixels)
@@ -36,7 +42,7 @@ pub fn create_texture(
 	name: &str,
 	size: (u32, u32),
 	format: wgpu::TextureFormat,
-	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
+	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	gpu_instance: &GpuInstance,
 ) -> Texture {
@@ -60,11 +66,35 @@ pub fn create_texture(
 		});
 
 	let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-	let samplers = samplers.unwrap_or((
-		&gpu_instance.wgpu_filtering_sampler,
-		&gpu_instance.wgpu_non_filtering_sampler,
-	));
+	let mut mipmap_views = vec![];
+	let mut mipmap_bind_groups = vec![];
+	for i in 0..mip_count {
+		let view = texture.create_view(&wgpu::TextureViewDescriptor {
+			base_mip_level: i,
+			mip_level_count: Some(1),
+			..Default::default()
+		});
+		let bind_group = gpu_instance
+			.wgpu_device
+			.create_bind_group(&wgpu::BindGroupDescriptor {
+				label: Some("mipmap_bind_group"),
+				layout: &gpu_instance.wgpu_mipmap_bind_group_layout,
+				entries: &[
+					wgpu::BindGroupEntry {
+						binding: 0,
+						resource: wgpu::BindingResource::TextureView(&view),
+					},
+					wgpu::BindGroupEntry {
+						binding: 1,
+						resource: wgpu::BindingResource::Sampler(
+							&gpu_instance.wgpu_filtering_sampler,
+						),
+					},
+				],
+			});
+		mipmap_views.push(view);
+		mipmap_bind_groups.push(bind_group);
+	}
 
 	let bind_group = gpu_instance
 		.wgpu_device
@@ -78,11 +108,11 @@ pub fn create_texture(
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(samplers.0),
-				},
-				wgpu::BindGroupEntry {
-					binding: 2,
-					resource: wgpu::BindingResource::Sampler(samplers.1),
+					resource: wgpu::BindingResource::Sampler(if filter_mode == wgpu::FilterMode::Linear {
+						&gpu_instance.wgpu_filtering_sampler
+					} else {
+						&gpu_instance.wgpu_non_filtering_sampler
+					}),
 				},
 			],
 		});
@@ -90,6 +120,8 @@ pub fn create_texture(
 	Texture {
 		wgpu_texture: texture,
 		wgpu_view: view,
+		wgpu_mipmap_views: mipmap_views,
+		wgpu_mipmap_bind_groups: mipmap_bind_groups,
 		wgpu_bind_group: bind_group,
 		wgpu_format: format,
 		mip_count,
@@ -102,7 +134,7 @@ pub fn create_texture(
 /// - The mip level is always 1
 #[must_use]
 #[inline]
-pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInstance) -> Texture {
+pub fn create_depth_texture(name: &str, size: (u32, u32), filter_mode: wgpu::FilterMode, gpu_instance: &GpuInstance) -> Texture {
 	let format = wgpu::TextureFormat::Depth24Plus;
 
 	let texture = gpu_instance
@@ -136,13 +168,11 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInst
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_filtering_sampler),
-				},
-				wgpu::BindGroupEntry {
-					binding: 2,
-					resource: wgpu::BindingResource::Sampler(
-						&gpu_instance.wgpu_non_filtering_sampler,
-					),
+					resource: wgpu::BindingResource::Sampler(if filter_mode == wgpu::FilterMode::Linear {
+						&gpu_instance.wgpu_filtering_sampler
+					} else {
+						&gpu_instance.wgpu_non_filtering_sampler
+					}),
 				},
 			],
 		});
@@ -150,6 +180,8 @@ pub fn create_depth_texture(name: &str, size: (u32, u32), gpu_instance: &GpuInst
 	Texture {
 		wgpu_texture: texture,
 		wgpu_view: view,
+		wgpu_mipmap_views: vec![],
+		wgpu_mipmap_bind_groups: vec![],
 		wgpu_bind_group: bind_group,
 		wgpu_format: format,
 		mip_count: 1,
@@ -215,7 +247,7 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 #[cfg(feature = "image")]
 pub fn load_texture_from_path(
 	path: &Path,
-	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
+	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	gpu_instance: &GpuInstance,
 ) -> Result<Texture> {
@@ -229,7 +261,7 @@ pub fn load_texture_from_path(
 		&file_name,
 		size,
 		wgpu::TextureFormat::Rgba8Unorm,
-		samplers,
+		filter_mode,
 		mip_count,
 		gpu_instance,
 	);
@@ -284,7 +316,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	name: &str,
 	textures: &[(u32, u32, Data)],
 	format: wgpu::TextureFormat,
-	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
+	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &GpuInstance,
@@ -365,7 +397,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 			name,
 			(atlas_width, atlas_height),
 			format,
-			samplers,
+			filter_mode,
 			mip_count,
 			gpu_instance,
 		);
@@ -526,7 +558,7 @@ pub fn create_texture_atlas_from_path(
 	name: &str,
 	path: &Path,
 	recursive: bool,
-	samplers: Option<(&wgpu::Sampler, &wgpu::Sampler)>,
+	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &GpuInstance,
@@ -563,7 +595,7 @@ pub fn create_texture_atlas_from_path(
 		name,
 		&textures,
 		wgpu::TextureFormat::Rgba8Unorm,
-		samplers,
+		filter_mode,
 		mip_count,
 		min_size,
 		gpu_instance,
@@ -592,6 +624,86 @@ pub fn make_sampler(
 		address_mode_w: wrapping,
 		mag_filter: filter,
 		min_filter: filter,
+		mipmap_filter: wgpu::MipmapFilterMode::Linear,
 		..Default::default()
 	})
+}
+
+
+
+/// Regenerates the mipmap data for a texture
+pub fn refill_mipmaps(
+	texture: &Texture,
+	command_encoder: &mut wgpu::CommandEncoder,
+	gpu_instance: &mut GpuInstance,
+) {
+	if texture.mip_count < 2 {
+		return;
+	}
+	let pipeline = get_mipmap_pipeline(texture.wgpu_format, gpu_instance);
+	let dont_load = unsafe { wgpu::LoadOpDontCare::enabled() }; // safety: the entire output will be overwritten without blending
+
+	for i in 1..texture.mip_count {
+		let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+			label: Some("render_mipmap"),
+			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+				view: &texture.wgpu_mipmap_views[i as usize],
+				depth_slice: None,
+				resolve_target: None,
+				ops: wgpu::Operations {
+					load: wgpu::LoadOp::DontCare(dont_load),
+					store: wgpu::StoreOp::Store,
+				},
+			})],
+			depth_stencil_attachment: None,
+			timestamp_writes: None,
+			occlusion_query_set: None,
+			multiview_mask: None,
+		});
+		render_pass.set_pipeline(pipeline);
+		let higher_mipmap_bind_group = &texture.wgpu_mipmap_bind_groups[i as usize - 1];
+		render_pass.set_bind_group(0, higher_mipmap_bind_group, &[]);
+		render_pass.draw(0..4, 0..1);
+	}
+}
+
+/// Returns the pipeline needed for rendering a texture's mipmaps
+pub fn get_mipmap_pipeline(
+	texture_format: wgpu::TextureFormat,
+	gpu_instance: &mut GpuInstance,
+) -> &wgpu::RenderPipeline {
+	gpu_instance
+		.wgpu_mipmap_pipelines
+		.entry(texture_format)
+		.or_insert_with(|| {
+			let desc = wgpu::RenderPipelineDescriptor {
+				label: Some("mipmap_pipeline"),
+				layout: Some(&gpu_instance.wgpu_mipmap_pipeline_layout),
+				vertex: wgpu::VertexState {
+					module: &gpu_instance.wgpu_full_quad_vertex_shader,
+					entry_point: None,
+					buffers: &[],
+					compilation_options: wgpu::PipelineCompilationOptions::default(),
+				},
+				fragment: Some(wgpu::FragmentState {
+					module: &gpu_instance.wgpu_mipmap_fragment_shader,
+					entry_point: None,
+					targets: &[Some(wgpu::ColorTargetState {
+						format: texture_format,
+						blend: Some(wgpu::BlendState::REPLACE),
+						write_mask: wgpu::ColorWrites::ALL,
+					})],
+					compilation_options: wgpu::PipelineCompilationOptions::default(),
+				}),
+				primitive: wgpu::PrimitiveState {
+					topology: wgpu::PrimitiveTopology::TriangleStrip,
+					..Default::default()
+				},
+				depth_stencil: None,
+				multisample: wgpu::MultisampleState::default(),
+				multiview_mask: None,
+				cache: None,
+			};
+			gpu_instance.wgpu_device.create_render_pipeline(&desc)
+		})
 }

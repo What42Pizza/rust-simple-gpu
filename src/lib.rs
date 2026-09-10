@@ -48,7 +48,7 @@
 
 
 use anyhow::{Ok, Result};
-use std::{borrow::Cow, ffi::OsStr, path::Path};
+use std::{borrow::Cow, collections::HashMap, ffi::OsStr, path::Path};
 
 
 
@@ -83,10 +83,12 @@ pub struct GpuInstance {
 	pub wgpu_device: wgpu::Device,
 	/// This is where you send the commands for the gpu to execute
 	pub wgpu_queue: wgpu::Queue,
+
 	/// This is just a basic sampler with bilinear filtering and coordinate clamping enabled
 	pub wgpu_filtering_sampler: wgpu::Sampler,
 	/// This is just a basic sampler with filtering disabled and coordinate clamping enabled
 	pub wgpu_non_filtering_sampler: wgpu::Sampler,
+
 	/// This specifies the layout for the uniforms bind group. More:
 	///
 	/// - Binding 0: buffer (type: uniforms)
@@ -94,15 +96,21 @@ pub struct GpuInstance {
 	/// This specifies the layout for each texture's bind group. More:
 	///
 	/// - Binding 0: texture view
-	/// - Binding 1: texture sampler (filtering)
-	/// - Binding 2: texture sampler (non-filtering)
+	/// - Binding 1: texture sampler
 	pub wgpu_texture_bind_group_layout: wgpu::BindGroupLayout,
 	/// This specifies the layout for each depth texture's bind group. More:
 	///
 	/// - Binding 0: texture view
-	/// - Binding 1: texture sampler (filtering)
-	/// - Binding 2: texture sampler (non-filtering)
+	/// - Binding 1: texture sampler
 	pub wgpu_depth_texture_bind_group_layout: wgpu::BindGroupLayout,
+	/// This specifies the layout for each texture's mipmap view bind groups. More:
+	///
+	/// Note: these are not used in normal operation and are only used for regenerating mipmaps.
+	///
+	/// - Binding 0: texture mipmap view
+	/// - Binding 1: default filtering sampler
+	pub wgpu_mipmap_bind_group_layout: wgpu::BindGroupLayout,
+
 	/// These are the default pipeline layouts used to render everything. More:
 	///
 	/// - The pipeline at index 0 has 0 texture inputs, at index 1 has 1 texture input, and so on
@@ -110,9 +118,21 @@ pub struct GpuInstance {
 	/// - Its bindings are:
 	/// - Bind group 0 binding 0: buffer (type: uniforms)
 	/// - Bind group n binding 0: texture view
-	/// - Bind group n binding 1: texture sampler (filtering)
-	/// - Bind group n binding 2: texture sampler (non-filtering)
+	/// - Bind group n binding 1: texture sampler
 	pub wgpu_pipeline_layouts: Vec<wgpu::PipelineLayout>,
+	/// This is the pipeline layout used for regenerating mipmaps. More:
+	///
+	/// - Its bindings are:
+	/// - Bind group 0 binding 0: mipmap level view
+	/// - Bind group 0 binding 1: texture sampler (filtering)
+	pub wgpu_mipmap_pipeline_layout: wgpu::PipelineLayout,
+
+	/// This is the vertex shader used for mipmap generation, and all it does it place 4 vertices at the 4 corners of the screen
+	pub wgpu_full_quad_vertex_shader: wgpu::ShaderModule,
+	/// This is the fragment shader used for mipmap generation
+	pub wgpu_mipmap_fragment_shader: wgpu::ShaderModule,
+	/// This is the pipeline used for mipmap generation
+	pub wgpu_mipmap_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
 }
 
 
@@ -122,8 +142,13 @@ pub struct GpuInstance {
 /// # Errors
 ///
 /// This returns an error if [`wgpu::Instance::request_adapter()`] errors or if [`wgpu::Adapter::request_device()`] errors.
+/// 
+/// # Panics
+/// 
+/// This only panics if neither the "glsl" nor "wgsl" features are enabled
 #[inline]
 pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<GpuInstance> {
+	// basics:
 	let wgpu_instance =
 		wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
 
@@ -151,6 +176,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		&wgpu_device,
 	);
 
+	// bind group layoutsS:
 	let uniforms_bind_group_layout =
 		wgpu_device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("uniforms_bind_group_layout"),
@@ -182,17 +208,10 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 					count: None,
 				},
 				wgpu::BindGroupLayoutEntry {
-					// filtering sampler
+					// sampler
 					binding: 1,
 					visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-					count: None,
-				},
-				wgpu::BindGroupLayoutEntry {
-					// non-filtering sampler
-					binding: 2,
-					visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
 					count: None,
 				},
 			],
@@ -220,27 +239,96 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
 				},
+			],
+		});
+
+	let mipmap_bind_group_layout =
+		wgpu_device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			label: Some("mipmap_bind_group_layout"),
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					// texture
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
 				wgpu::BindGroupLayoutEntry {
 					// sampler
-					binding: 2,
-					visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
 				},
 			],
 		});
+
+	// pipeline layouts:
+	let mipmap_pipeline_layout =
+		wgpu_device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: Some("mipmap_pipeline_layout"),
+			bind_group_layouts: &[Some(&mipmap_bind_group_layout)],
+			immediate_size: 0,
+		});
+
+	// shaders:
+	#[cfg(feature = "glsl")]
+	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+		label: Some("mipmap_vertex_shader"),
+		source: wgpu::ShaderSource::Glsl {
+			shader: include_str!("mipmap_shaders/vertex.glsl").into(),
+			stage: wgpu::naga::ShaderStage::Vertex,
+			defines: &[],
+		},
+	});
+	#[cfg(feature = "wgsl")]
+	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+		label: Some("mipmap_vertex_shader"),
+		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
+	});
+	
+	#[cfg(feature = "glsl")]
+	let mipmap_fragment_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+		label: Some("mipmap_fragment_shader"),
+		source: wgpu::ShaderSource::Glsl {
+			shader: include_str!("mipmap_shaders/fragment.glsl").into(),
+			stage: wgpu::naga::ShaderStage::Fragment,
+			defines: &[],
+		},
+	});
+	#[cfg(feature = "wgsl")]
+	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+		label: Some("mipmap_fragment_shader"),
+		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
+	});
+	
+	#[cfg(not(any(feature = "glsl", feature = "wgsl")))]
+	compile_error!("Either the \"glsl\" or \"wgsl\" features must be enabled!");
 
 	Ok(GpuInstance {
 		wgpu_instance,
 		wgpu_adapter,
 		wgpu_device,
 		wgpu_queue,
+
 		wgpu_filtering_sampler: filtering_sampler,
 		wgpu_non_filtering_sampler: non_filtering_sampler,
+
 		wgpu_uniforms_bind_group_layout: uniforms_bind_group_layout,
 		wgpu_texture_bind_group_layout: texture_bind_group_layout,
 		wgpu_depth_texture_bind_group_layout: depth_texture_bind_group_layout,
+		wgpu_mipmap_bind_group_layout: mipmap_bind_group_layout,
+
 		wgpu_pipeline_layouts: vec![],
+		wgpu_mipmap_pipeline_layout: mipmap_pipeline_layout,
+
+		wgpu_full_quad_vertex_shader: mipmap_vertex_shader,
+		wgpu_mipmap_fragment_shader: mipmap_fragment_shader,
+		wgpu_mipmap_pipelines: HashMap::new(),
 	})
 }
 
