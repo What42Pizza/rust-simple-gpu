@@ -48,7 +48,7 @@
 
 
 use anyhow::{Ok, Result};
-use std::{borrow::Cow, collections::HashMap, ffi::OsStr, path::Path};
+use std::{borrow::Cow, collections::HashMap, ffi::OsStr, path::Path, time::Instant};
 
 
 
@@ -58,10 +58,7 @@ pub use window_surface::*;
 /// Utilities for creating and updating textures
 pub mod textures;
 pub use textures::*;
-/// Utilities for creating and updating the uniforms buffer
-pub mod uniforms_buffer;
-pub use uniforms_buffer::*;
-/// Utilities for creating and updating vertex buffers, index buffers, and instance buffers
+/// Utilities for creating and updating vertex buffers, index buffers, instance buffers, and the uniforms buffer
 pub mod data_buffers;
 pub use data_buffers::*;
 /// Utilities for creating pipelines
@@ -404,6 +401,36 @@ pub fn finish_frame(
 #[inline]
 pub fn get_gpu_limits(gpu_instance: &GpuInstance) -> wgpu::Limits {
 	gpu_instance.wgpu_adapter.limits()
+}
+
+
+
+/// A simple fps counter that prints to stdout
+pub struct FpsCounter {
+	count: usize,
+	last_print_time: Instant,
+}
+
+impl FpsCounter {
+	/// Creates a new FpsCounter
+	pub fn new() -> Self {
+		Self {
+			count: 0,
+			last_print_time: Instant::now(),
+		}
+	}
+	/// Notifies the fps counter that a frame has been processed
+	pub fn tick(&mut self) {
+		self.count += 1;
+		let current = Instant::now();
+		let elapsed = current.duration_since(self.last_print_time);
+		if elapsed.as_secs() >= 1 {
+			let fps = self.count as f32 / elapsed.as_secs_f32();
+			println!("Fps: {fps:.1}");
+			self.count = 0;
+			self.last_print_time = current;
+		}
+	}
 }
 
 

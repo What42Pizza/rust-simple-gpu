@@ -28,6 +28,8 @@ pub struct Texture {
 	pub wgpu_format: wgpu::TextureFormat,
 	/// Specified the number of mip levels this texture contains (must be at least 1)
 	pub mip_count: u32,
+	/// The name of the texture, used for recreating the texture's bind group
+	pub name: String,
 }
 
 /// Creates a new texture with a given size and format. More:
@@ -39,17 +41,19 @@ pub struct Texture {
 #[must_use]
 #[inline]
 pub fn create_texture(
-	name: &str,
+	name: impl Into<String>,
 	size: (u32, u32),
 	format: wgpu::TextureFormat,
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	gpu_instance: &GpuInstance,
 ) -> Texture {
+	let name = name.into();
+
 	let texture = gpu_instance
 		.wgpu_device
 		.create_texture(&wgpu::TextureDescriptor {
-			label: Some(name),
+			label: Some(&name),
 			size: wgpu::Extent3d {
 				width: size.0,
 				height: size.1,
@@ -99,7 +103,7 @@ pub fn create_texture(
 	let bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some(name),
+			label: Some(&name),
 			layout: &gpu_instance.wgpu_texture_bind_group_layout,
 			entries: &[
 				wgpu::BindGroupEntry {
@@ -127,7 +131,20 @@ pub fn create_texture(
 		wgpu_bind_group: bind_group,
 		wgpu_format: format,
 		mip_count,
+		name,
 	}
+}
+
+
+
+/// Same as [`Texture`], but specifically for depth textures, which need to be used and configured differently
+pub struct DepthTexture {
+	/// Holds the most basic data about the texture
+	pub wgpu_texture: wgpu::Texture,
+	/// Can be given to bind groups, which are then bound to the render pipeline.
+	pub wgpu_view: wgpu::TextureView,
+	/// This is a bind group with just one binding, which is a view to this texture. The layout for this is taken from [`GpuInstance::wgpu_texture_bind_group_layout`]
+	pub wgpu_bind_group: wgpu::BindGroup,
 }
 
 /// Creates a new depth texture with a given size. More:
@@ -137,17 +154,18 @@ pub fn create_texture(
 #[must_use]
 #[inline]
 pub fn create_depth_texture(
-	name: &str,
+	name: impl Into<String>,
 	size: (u32, u32),
 	filter_mode: wgpu::FilterMode,
 	gpu_instance: &GpuInstance,
-) -> Texture {
+) -> DepthTexture {
+	let name = name.into();
 	let format = wgpu::TextureFormat::Depth24Plus;
 
 	let texture = gpu_instance
 		.wgpu_device
 		.create_texture(&wgpu::TextureDescriptor {
-			label: Some(name),
+			label: Some(&name),
 			size: wgpu::Extent3d {
 				width: size.0,
 				height: size.1,
@@ -166,7 +184,7 @@ pub fn create_depth_texture(
 	let bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some(name),
+			label: Some(&name),
 			layout: &gpu_instance.wgpu_depth_texture_bind_group_layout,
 			entries: &[
 				wgpu::BindGroupEntry {
@@ -186,14 +204,10 @@ pub fn create_depth_texture(
 			],
 		});
 
-	Texture {
+	DepthTexture {
 		wgpu_texture: texture,
 		wgpu_view: view,
-		wgpu_mipmap_views: vec![],
-		wgpu_mipmap_bind_groups: vec![],
 		wgpu_bind_group: bind_group,
-		wgpu_format: format,
-		mip_count: 1,
 	}
 }
 
@@ -238,6 +252,37 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 	);
 }
 
+/// Sets the filter mode for a texture
+pub fn set_filter_mode(
+	texture: &mut Texture,
+	filter_mode: wgpu::FilterMode,
+	gpu_instance: &GpuInstance,
+) {
+	let new_bind_group = gpu_instance
+		.wgpu_device
+		.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some(&texture.name),
+			layout: &gpu_instance.wgpu_texture_bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(&texture.wgpu_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::Sampler(
+						if filter_mode == wgpu::FilterMode::Linear {
+							&gpu_instance.wgpu_filtering_sampler
+						} else {
+							&gpu_instance.wgpu_non_filtering_sampler
+						},
+					),
+				},
+			],
+		});
+	texture.wgpu_bind_group = new_bind_group;
+}
+
 
 
 /// Creates a texture from a given file path. More:
@@ -267,7 +312,7 @@ pub fn load_texture_from_path(
 	let file_name = file_name(path)
 		.ok_or_else(|| anyhow!("Failed to get file name from path {}", path.display()))?;
 	let texture = create_texture(
-		&file_name,
+		file_name,
 		size,
 		wgpu::TextureFormat::Rgba8Unorm,
 		filter_mode,

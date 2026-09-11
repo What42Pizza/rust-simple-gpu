@@ -67,12 +67,14 @@ impl UniformsRawData {
 struct ProgramData {
 	should_quit: bool,
 	last_dt_instant: Instant,
+	fps_counter: simple_gpu::FpsCounter,
 
 	camera: CameraData,
 	aspect_ratio: f32,
 
+	pipeline: wgpu::RenderPipeline,
 	vertex_buffer: simple_gpu::VertexBuffer<VertexData>,
-	main_index_buffer: simple_gpu::IndexBuffer,
+	index_buffer: simple_gpu::IndexBuffer,
 	instance_buffer: simple_gpu::VertexBuffer<InstanceData>,
 	textures: Textures,
 
@@ -89,6 +91,7 @@ struct CameraData {
 }
 
 struct Textures {
+	depth_tex: simple_gpu::DepthTexture,
 	wall_tex: simple_gpu::Texture,
 }
 
@@ -142,18 +145,12 @@ fn main() -> Result<()> {
 		wgpu::PresentMode::AutoVsync,
 	);
 	let mut window_surface = window_surface?;
-	let mut depth_tex = simple_gpu::create_depth_texture(
-		"main depth tex",
-		window_size,
-		wgpu::FilterMode::Linear,
-		&gpu_instance,
-	);
 
 	// shaders
 	let shaders_path = assets_path.join("shaders");
-	let main_vsh_shader =
+	let main_vertex_shader =
 		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("main.vsh"), &gpu_instance, &[])?;
-	let main_fsh_shader =
+	let main_fragment_shader =
 		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("main.fsh"), &gpu_instance, &[])?;
 
 	// uniforms
@@ -168,23 +165,29 @@ fn main() -> Result<()> {
 		1,
 		&gpu_instance,
 	)?;
+	let mut depth_tex = simple_gpu::create_depth_texture(
+		"main depth tex",
+		window_size,
+		wgpu::FilterMode::Linear,
+		&gpu_instance,
+	);
 
 	// pipeline
-	let main_pipeline = simple_gpu::create_3d_pipeline(
+	let pipeline = simple_gpu::create_3d_pipeline(
 		"main pipeline",
 		&[
 			Some(VertexData::WGPU_LAYOUT),
 			Some(InstanceData::WGPU_LAYOUT),
 		],
-		&main_vsh_shader,
-		&main_fsh_shader,
+		&main_vertex_shader,
+		&main_fragment_shader,
 		window_surface.wgpu_format,
 		1,
 		&mut gpu_instance,
 	);
 
 	// vertex data
-	let mut main_vertex_buffer = simple_gpu::init_vertex_buffer(
+	let mut vertex_buffer = simple_gpu::init_vertex_buffer(
 		"main vertex buffer",
 		&[
 			VertexData {
@@ -212,11 +215,11 @@ fn main() -> Result<()> {
 	);
 
 	// index data
-	let mut main_index_buffer =
+	let mut index_buffer =
 		simple_gpu::create_index_buffer("main index buffer", &[0, 1, 2, 2, 1, 3], &gpu_instance);
 
 	// instance data
-	let mut main_instance_buffer = simple_gpu::init_vertex_buffer(
+	let mut instance_buffer = simple_gpu::init_vertex_buffer(
 		"main instance buffer",
 		&[
 			InstanceData {
@@ -233,6 +236,7 @@ fn main() -> Result<()> {
 	let mut data = ProgramData {
 		should_quit: false,
 		last_dt_instant: Instant::now(),
+		fps_counter: simple_gpu::FpsCounter::new(),
 
 		camera: CameraData {
 			pos: vec3(0.0, 0.0, 0.0),
@@ -244,10 +248,14 @@ fn main() -> Result<()> {
 		},
 		aspect_ratio: window_size.0 as f32 / window_size.1 as f32,
 
-		vertex_buffer: main_vertex_buffer,
-		main_index_buffer,
-		instance_buffer: main_instance_buffer,
-		textures: Textures { wall_tex },
+		pipeline,
+		vertex_buffer,
+		index_buffer,
+		instance_buffer,
+		textures: Textures {
+			depth_tex,
+			wall_tex,
+		},
 
 		uniforms_buffer,
 	};
@@ -278,7 +286,7 @@ fn main() -> Result<()> {
 						&gpu_instance,
 						(new_width as u32, new_height as u32),
 					);
-					depth_tex = simple_gpu::create_depth_texture(
+					data.textures.depth_tex = simple_gpu::create_depth_texture(
 						"main depth texture",
 						window.size(),
 						wgpu::FilterMode::Linear,
@@ -349,7 +357,7 @@ fn main() -> Result<()> {
 						&gpu_instance,
 						window.size(),
 					);
-					depth_tex = simple_gpu::create_depth_texture(
+					data.textures.depth_tex = simple_gpu::create_depth_texture(
 						"main depth texture",
 						window.size(),
 						wgpu::FilterMode::Linear,
@@ -362,7 +370,7 @@ fn main() -> Result<()> {
 		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
 			&surface_tex_view,
-			&depth_tex.wgpu_view,
+			&data.textures.depth_tex.wgpu_view,
 			Some(wgpu::Color::WHITE),
 			true,
 			&mut command_encoder,
@@ -370,12 +378,12 @@ fn main() -> Result<()> {
 
 		simple_gpu::render(
 			&mut render_pass,
-			&main_pipeline,
+			&data.pipeline,
 			&[
 				&data.vertex_buffer.wgpu_buffer,
 				&data.instance_buffer.wgpu_buffer,
 			],
-			Some(&data.main_index_buffer),
+			Some(&data.index_buffer),
 			&[&data.textures.wall_tex],
 			&data.uniforms_buffer.wgpu_bind_group,
 			data.vertex_buffer.wgpu_buffer_len,
@@ -385,6 +393,8 @@ fn main() -> Result<()> {
 		simple_gpu::finish_render_pass(render_pass);
 
 		simple_gpu::finish_frame(command_encoder, surface_tex, &gpu_instance);
+
+		data.fps_counter.tick();
 	}
 
 	Ok(())

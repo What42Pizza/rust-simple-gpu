@@ -69,10 +69,12 @@ impl UniformsRawData {
 struct ProgramData {
 	should_quit: bool,
 	last_dt_instant: Instant,
+	fps_counter: simple_gpu::FpsCounter,
 
 	camera: CameraData,
 	aspect_ratio: f32,
 
+	pipeline: wgpu::RenderPipeline,
 	vertex_buf: simple_gpu::VertexBuffer<VertexData>,
 	index_buf: simple_gpu::IndexBuffer,
 	instance_buf: simple_gpu::VertexBuffer<InstanceData>,
@@ -91,6 +93,7 @@ struct CameraData {
 }
 
 struct Textures {
+	depth_tex: simple_gpu::DepthTexture,
 	atlas: simple_gpu::Texture,
 }
 
@@ -130,7 +133,7 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 		atlas_textures.push((width, height, data));
 	}
 	let start = Instant::now();
-	let (atlas, _tex_locations, _atlas_allocator) = simple_gpu::create_texture_atlas(
+	let (mut atlas, _tex_locations, _atlas_allocator) = simple_gpu::create_texture_atlas(
 		"main atlas",
 		&atlas_textures,
 		wgpu::TextureFormat::Rgba8Unorm,
@@ -192,18 +195,12 @@ fn main() -> Result<()> {
 		wgpu::PresentMode::AutoVsync,
 	);
 	let mut window_surface = window_surface?;
-	let mut depth_tex = simple_gpu::create_depth_texture(
-		"main depth tex",
-		window_size,
-		wgpu::FilterMode::Linear,
-		&gpu_instance,
-	);
 
 	// shaders
 	let shaders_path = assets_path.join("shaders");
-	let main_vsh_shader =
+	let main_vertex_shader =
 		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("main.vsh"), &gpu_instance, &[])?;
-	let main_fsh_shader =
+	let main_fragment_shader =
 		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("main.fsh"), &gpu_instance, &[])?;
 
 	// uniforms
@@ -212,23 +209,29 @@ fn main() -> Result<()> {
 
 	// textures
 	let textures_path = assets_path.join("textures");
+	let mut depth_tex = simple_gpu::create_depth_texture(
+		"main depth tex",
+		window_size,
+		wgpu::FilterMode::Linear,
+		&gpu_instance,
+	);
 
 	// pipeline
-	let main_pipeline = simple_gpu::create_3d_pipeline(
+	let pipeline = simple_gpu::create_3d_pipeline(
 		"main pipeline",
 		&[
 			Some(VertexData::WGPU_LAYOUT),
 			Some(InstanceData::WGPU_LAYOUT),
 		],
-		&main_vsh_shader,
-		&main_fsh_shader,
+		&main_vertex_shader,
+		&main_fragment_shader,
 		window_surface.wgpu_format,
 		1,
 		&mut gpu_instance,
 	);
 
 	// vertex data
-	let mut main_vertex_buffer = simple_gpu::init_vertex_buffer(
+	let mut vertex_buffer = simple_gpu::init_vertex_buffer(
 		"main vertex buffer",
 		&[
 			VertexData {
@@ -256,11 +259,11 @@ fn main() -> Result<()> {
 	);
 
 	// index data
-	let mut main_index_buffer =
+	let mut index_buffer =
 		simple_gpu::create_index_buffer("main index buffer", &[0, 1, 2, 2, 1, 3], &gpu_instance);
 
 	// instance data
-	let mut main_instance_buffer = simple_gpu::init_vertex_buffer(
+	let mut instance_buffer = simple_gpu::init_vertex_buffer(
 		"main instance buffer",
 		&[InstanceData {
 			pos: [0.0, 0.0, -1.5],
@@ -275,6 +278,7 @@ fn main() -> Result<()> {
 	let mut data = ProgramData {
 		should_quit: false,
 		last_dt_instant: Instant::now(),
+		fps_counter: simple_gpu::FpsCounter::new(),
 
 		camera: CameraData {
 			pos: vec3(0.0, 0.0, 0.0),
@@ -286,19 +290,17 @@ fn main() -> Result<()> {
 		},
 		aspect_ratio: window_size.0 as f32 / window_size.1 as f32,
 
-		vertex_buf: main_vertex_buffer,
-		index_buf: main_index_buffer,
-		instance_buf: main_instance_buffer,
-		textures: Textures { atlas },
+		pipeline,
+		vertex_buf: vertex_buffer,
+		index_buf: index_buffer,
+		instance_buf: instance_buffer,
+		textures: Textures { depth_tex, atlas },
 
 		uniforms_buf: uniforms_buffer,
 	};
 
 
 
-	let mut fps_count = 0;
-	let mut last_print_time = Instant::now();
-	let mut last_type = 0;
 	window.show();
 	while !data.should_quit {
 		// initial update
@@ -323,7 +325,7 @@ fn main() -> Result<()> {
 						&gpu_instance,
 						(new_width as u32, new_height as u32),
 					);
-					depth_tex = simple_gpu::create_depth_texture(
+					data.textures.depth_tex = simple_gpu::create_depth_texture(
 						"main depth texture",
 						window.size(),
 						wgpu::FilterMode::Linear,
@@ -390,7 +392,7 @@ fn main() -> Result<()> {
 						&gpu_instance,
 						window.size(),
 					);
-					depth_tex = simple_gpu::create_depth_texture(
+					data.textures.depth_tex = simple_gpu::create_depth_texture(
 						"main depth texture",
 						window.size(),
 						wgpu::FilterMode::Linear,
@@ -403,7 +405,7 @@ fn main() -> Result<()> {
 		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
 			&surface_tex_view,
-			&depth_tex.wgpu_view,
+			&data.textures.depth_tex.wgpu_view,
 			Some(wgpu::Color::WHITE),
 			true,
 			&mut command_encoder,
@@ -411,7 +413,7 @@ fn main() -> Result<()> {
 
 		simple_gpu::render(
 			&mut render_pass,
-			&main_pipeline,
+			&data.pipeline,
 			&[&data.vertex_buf.wgpu_buffer, &data.instance_buf.wgpu_buffer],
 			Some(&data.index_buf),
 			&[&data.textures.atlas],
@@ -424,12 +426,7 @@ fn main() -> Result<()> {
 
 		simple_gpu::finish_frame(command_encoder, surface_tex, &gpu_instance);
 
-		fps_count += 1;
-		if last_print_time.elapsed().as_secs() >= 1 {
-			//println!("fps: {fps_count}");
-			fps_count = 0;
-			last_print_time += Duration::from_secs(1);
-		}
+		data.fps_counter.tick();
 	}
 
 	Ok(())

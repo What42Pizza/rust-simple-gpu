@@ -1,5 +1,8 @@
 use crate::GpuInstance;
-use std::ops::{Deref, DerefMut};
+use std::{
+	marker::PhantomData,
+	ops::{Deref, DerefMut},
+};
 
 
 
@@ -155,11 +158,11 @@ pub trait BufferItemRawData: bytemuck::Pod {
 }
 
 /// Creates a type that represents an item in a vertex / instance buffer
-/// 
+///
 /// The first token needs to be either `Vertex` or `Instance`, which directly corresponds to [`wgpu::VertexStepMode`]. After that, you define the struct, where each field has a name, type, shader location, and shader format.
-/// 
+///
 /// Example:
-/// 
+///
 /// ```
 /// // makes a vertex buffer item type called "VertexData"
 /// make_vertex_buffer_type!(Vertex, struct VertexData {
@@ -168,9 +171,9 @@ pub trait BufferItemRawData: bytemuck::Pod {
 ///     color: [f32; 4] as location 2: Float32x4,
 /// });
 /// ```
-/// 
+///
 /// This expands to:
-/// 
+///
 /// ```
 /// #[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 /// #[repr(C)]
@@ -213,7 +216,7 @@ macro_rules! make_vertex_buffer_type {
 				pub $field_name: $field_type,
 			)+
 		}
-		
+
 		impl $crate::BufferItemRawData for $struct_name {
 			const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
 				array_stride: std::mem::size_of::<$struct_name>() as u64,
@@ -226,4 +229,69 @@ macro_rules! make_vertex_buffer_type {
 			};
 		}
 	};
+}
+
+
+
+/// Holds all the uniform data. It is suggested that only one of these is made, and that it is updated exactly once per frame
+pub struct UniformsBuffer<UniformsRawData> {
+	/// A handle to the gpu buffer
+	pub wgpu_buffer: wgpu::Buffer,
+	/// This is a bind group with just one binding, which is a link to this struct's [`wgpu::Buffer`]. The layout for this is taken from [`GpuInstance::wgpu_uniforms_bind_group_layout`]
+	pub wgpu_bind_group: wgpu::BindGroup,
+	#[doc(hidden)]
+	pub _phantom: PhantomData<UniformsRawData>,
+}
+
+/// Creates the buffer that stores uniform data
+#[must_use]
+#[inline]
+pub fn create_uniforms_buffer<UniformsRawData>(
+	gpu_instance: &GpuInstance,
+) -> UniformsBuffer<UniformsRawData> {
+	debug_assert!(
+		(std::mem::size_of::<UniformsRawData>() as u64).is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+		"Size of uniforms data MUST be divisible by `wgpu::COPY_BUFFER_ALIGNMENT`, which is {}",
+		wgpu::COPY_BUFFER_ALIGNMENT
+	);
+
+	let buffer = gpu_instance
+		.wgpu_device
+		.create_buffer(&wgpu::BufferDescriptor {
+			label: Some("uniforms"),
+			size: std::mem::size_of::<UniformsRawData>() as u64,
+			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+			mapped_at_creation: false,
+		});
+
+	let bind_group = gpu_instance
+		.wgpu_device
+		.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("uniforms"),
+			layout: &gpu_instance.wgpu_uniforms_bind_group_layout,
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: wgpu::BindingResource::Buffer(buffer.as_entire_buffer_binding()),
+			}],
+		});
+
+	UniformsBuffer {
+		wgpu_buffer: buffer,
+		wgpu_bind_group: bind_group,
+		_phantom: PhantomData,
+	}
+}
+
+/// Updates the uniforms buffer with new data
+#[inline]
+pub fn update_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
+	uniforms_buffer: &UniformsBuffer<UniformsRawData>,
+	uniforms_raw_data: &UniformsRawData,
+	gpu_instance: &GpuInstance,
+) {
+	gpu_instance.wgpu_queue.write_buffer(
+		&uniforms_buffer.wgpu_buffer,
+		0,
+		bytemuck::bytes_of(uniforms_raw_data),
+	);
 }
