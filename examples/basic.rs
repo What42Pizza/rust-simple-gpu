@@ -94,37 +94,16 @@ struct Textures {
 
 
 
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)]
-struct VertexData {
-	pub pos: [f32; 3],
-	pub uv: [f32; 2],
-	pub color: [f32; 4],
-}
+simple_gpu::make_vertex_buffer_type!(Vertex, struct VertexData {
+	pos:   [f32; 3] as location 0: Float32x3,
+	uv:    [f32; 2] as location 1: Float32x2,
+	color: [f32; 4] as location 2: Float32x4,
+});
 
-impl simple_gpu::BufferItemRawData for VertexData {
-	const FIELDS: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
-		0 => Float32x3,
-		1 => Float32x2,
-		2 => Float32x4,
-	];
-	const STEP_MODE: wgpu::VertexStepMode = wgpu::VertexStepMode::Vertex;
-}
+simple_gpu::make_vertex_buffer_type!(Instance, struct InstanceData {
+	pos: [f32; 3] as location 3: Float32x3,
+});
 
-
-
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-#[repr(C)]
-struct InstanceData {
-	pub pos: [f32; 3],
-}
-
-impl simple_gpu::BufferItemRawData for InstanceData {
-	const FIELDS: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
-		3 => Float32x3,
-	];
-	const STEP_MODE: wgpu::VertexStepMode = wgpu::VertexStepMode::Instance;
-}
 
 
 
@@ -194,8 +173,8 @@ fn main() -> Result<()> {
 	let main_pipeline = simple_gpu::create_3d_pipeline(
 		"main pipeline",
 		&[
-			Some(VertexData::BUFFER_LAYOUT),
-			Some(InstanceData::BUFFER_LAYOUT),
+			Some(VertexData::WGPU_LAYOUT),
+			Some(InstanceData::WGPU_LAYOUT),
 		],
 		&main_vsh_shader,
 		&main_fsh_shader,

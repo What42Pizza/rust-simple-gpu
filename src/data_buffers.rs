@@ -148,40 +148,82 @@ pub fn create_index_buffer(name: &str, indices: &[u16], gpu_instance: &GpuInstan
 
 
 
-/// Represents a type that can be put in a [`VertexBuffer`], and can be used for either vertex datas or instance datas
-///
-/// Example usage:
-///
+/// Represents a type that can be put in a [`VertexBuffer`], and can be used for either vertex datas or instance datas, and should be created with [`crate::make_vertex_buffer_type!()`]
+pub trait BufferItemRawData: bytemuck::Pod {
+	/// Defines the data layout of each item
+	const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static>;
+}
+
+/// Creates a type that represents an item in a vertex / instance buffer
+/// 
+/// The first token needs to be either `Vertex` or `Instance`, which directly corresponds to [`wgpu::VertexStepMode`]. After that, you define the struct, where each field has a name, type, shader location, and shader format.
+/// 
+/// Example:
+/// 
 /// ```
-/// #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+/// // makes a vertex buffer item type called "VertexData"
+/// make_vertex_buffer_type!(Vertex, struct VertexData {
+///     pos:   [f32; 3] as location 0: Float32x3,
+///     uv:    [f32; 2] as location 1: Float32x2,
+///     color: [f32; 4] as location 2: Float32x4,
+/// });
+/// ```
+/// 
+/// This expands to:
+/// 
+/// ```
+/// #[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 /// #[repr(C)]
-/// struct VertexRawData {
-///     pub pos: [f32; 3],
-///     pub uv: [f32; 2],
+/// pub struct VertexData {
+///     pub pos:   [f32; 3],
+///     pub uv:    [f32; 2],
 ///     pub color: [f32; 4],
 /// }
-///
-/// impl simple_gpu::BufferItemRawData for VertexRawData {
-///     // specifies the fields that VertexRawData has
-///     const FIELDS: &[wgpu::VertexAttribute] = &wgpu::vertex_attr_array![
-///         0 => Float32x3,
-///         1 => Float32x2,
-///         2 => Float32x4,
-///     ];
-///     // specifies that this contains vertex data, not instance data
-///     const STEP_MODE: wgpu::VertexStepMode = wgpu::VertexStepMode::Vertex;
-///     // there is another const field, but it is automatically generated from the other two
+/// impl simple_gpu::BufferItemRawData for VertexData {
+///     const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+///         array_stride: std::mem::size_of::<VertexData>() as u64,
+///         step_mode: wgpu::VertexStepMode::Vertex,
+///         attributes: &[
+///             wgpu::VertexAttribute {
+///                 format: wgpu::VertexFormat::Float32x3,
+///                 offset: 0,
+///                 shader_location: 0,
+///             },
+///             wgpu::VertexAttribute {
+///                 format: wgpu::VertexFormat::Float32x2,
+///                 offset: (0 + wgpu::VertexFormat::Float32x3.size()),
+///                 shader_location: 1,
+///             },
+///             wgpu::VertexAttribute {
+///                 format: wgpu::VertexFormat::Float32x4,
+///                 offset: ((0 + wgpu::VertexFormat::Float32x3.size()) + wgpu::VertexFormat::Float32x2.size()),
+///                 shader_location: 2,
+///             },
+///         ],
+///     };
 /// }
 /// ```
-pub trait BufferItemRawData: bytemuck::Pod {
-	/// Lists the fields that are in `Self`, should be constructed using `wgpu::vertex_attr_array![]`
-	const FIELDS: &[wgpu::VertexAttribute];
-	/// Defines if this is a vertex type or an instance type
-	const STEP_MODE: wgpu::VertexStepMode;
-	/// Lists this as a [`wgpu::VertexBufferLayout`] (note: this is automatically generated!)
-	const BUFFER_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
-		array_stride: std::mem::size_of::<Self>() as u64,
-		step_mode: Self::STEP_MODE,
-		attributes: Self::FIELDS,
+#[macro_export]
+macro_rules! make_vertex_buffer_type {
+	($step_mode:ident, struct $struct_name:ident { $( $field_name:ident : $field_type:ty as location $field_loc:tt : $field_data:ident , )+ }) => {
+		#[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+		#[repr(C)]
+		pub struct $struct_name {
+			$(
+				pub $field_name: $field_type,
+			)+
+		}
+		
+		impl $crate::BufferItemRawData for $struct_name {
+			const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+				array_stride: std::mem::size_of::<$struct_name>() as u64,
+				step_mode: wgpu::VertexStepMode::$step_mode,
+				attributes: &wgpu::vertex_attr_array![
+					$(
+						$field_loc => $field_data,
+					)+
+				],
+			};
+		}
 	};
 }

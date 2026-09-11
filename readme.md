@@ -2,8 +2,6 @@
 
 This is a tiny abstraction over WGPU that is inspired by the simplicity and directness of multimedia libraries like raylib and SDL. The main goal of this crate is to provide a simple and convenient way of rendering custom data with custom shaders.
 
-## See the [example program](examples/basic.rs)
-
 ### Other similar crates:
 
 - [simple-wgpu](https://crates.io/crates/simple-wgpu)
@@ -20,6 +18,8 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
   - This is licensed using CC0, meaning this is dedicated to the public domain.
 
 ### Workflow / full walkthrough:
+
+## See the [example program](examples/basic.rs)
 
 - First, you define:
   - The layout of uniforms (all shaders are given the same uniforms)
