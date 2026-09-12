@@ -156,29 +156,36 @@ pub fn create_3d_pipeline(
 
 
 
-/// Starts a 2d render pass (note: this one render pass can be used by multiple pipelines)
+/// Starts a 2d render pass
+/// 
+/// Notes:
+/// - For the output textures, you must give a list where each item is a texture view along with an optional clear color
+/// - A render pass can (and should) be reused for multiple draw calls if possible
 pub fn start_2d_render_pass<'a>(
 	name: &str,
-	texture_output: &wgpu::TextureView,
-	clear_color: Option<wgpu::Color>,
+	output_textures: &[(&wgpu::TextureView, Option<wgpu::Color>)],
 	command_encoder: &'a mut wgpu::CommandEncoder,
 ) -> wgpu::RenderPass<'a> {
-	let load_od = if let Some(clear_color) = clear_color {
-		wgpu::LoadOp::Clear(clear_color)
-	} else {
-		wgpu::LoadOp::Load
-	};
-	command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-		label: Some(name),
-		color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-			view: texture_output,
+	let mut color_attachments = vec![];
+	for (texture, clear_color) in output_textures {
+		let load_od = if let Some(clear_color) = *clear_color {
+			wgpu::LoadOp::Clear(clear_color)
+		} else {
+			wgpu::LoadOp::Load
+		};
+		color_attachments.push(Some(wgpu::RenderPassColorAttachment {
+			view: texture,
 			depth_slice: None,
 			resolve_target: None,
 			ops: wgpu::Operations {
 				load: load_od,
 				store: wgpu::StoreOp::Store,
 			},
-		})],
+		}));
+	}
+	command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+		label: Some(name),
+		color_attachments: &color_attachments,
 		depth_stencil_attachment: None,
 		timestamp_writes: None,
 		occlusion_query_set: None,
@@ -186,31 +193,38 @@ pub fn start_2d_render_pass<'a>(
 	})
 }
 
-/// Starts a 3d render pass (note: this one render pass can be used by multiple pipelines)
+/// Starts a 3d render pass
+/// 
+/// Notes:
+/// - For the output textures, you must give a list where each item is a texture view along with an optional clear color
+/// - A render pass can (and should) be reused for multiple draw calls if possible
 pub fn start_3d_render_pass<'a>(
 	name: &str,
-	texture_output: &wgpu::TextureView,
+	output_textures: &[(&wgpu::TextureView, Option<wgpu::Color>)],
 	depth_tex: &wgpu::TextureView,
-	clear_color: Option<wgpu::Color>,
 	clear_depth: bool,
 	command_encoder: &'a mut wgpu::CommandEncoder,
 ) -> wgpu::RenderPass<'a> {
-	let load_od = if let Some(clear_color) = clear_color {
-		wgpu::LoadOp::Clear(clear_color)
-	} else {
-		wgpu::LoadOp::Load
-	};
-	command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-		label: Some(name),
-		color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-			view: texture_output,
+	let mut color_attachments = vec![];
+	for (texture, clear_color) in output_textures {
+		let load_od = if let Some(clear_color) = *clear_color {
+			wgpu::LoadOp::Clear(clear_color)
+		} else {
+			wgpu::LoadOp::Load
+		};
+		color_attachments.push(Some(wgpu::RenderPassColorAttachment {
+			view: texture,
 			depth_slice: None,
 			resolve_target: None,
 			ops: wgpu::Operations {
 				load: load_od,
 				store: wgpu::StoreOp::Store,
 			},
-		})],
+		}));
+	}
+	command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+		label: Some(name),
+		color_attachments: &color_attachments,
 		depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
 			view: depth_tex,
 			depth_ops: Some(wgpu::Operations {

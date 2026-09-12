@@ -369,9 +369,8 @@ fn main() -> Result<()> {
 
 		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
-			&surface_tex_view,
+			&[(&surface_tex_view, Some(wgpu::Color::WHITE))],
 			&data.textures.depth_tex.wgpu_view,
-			Some(wgpu::Color::WHITE),
 			true,
 			&mut command_encoder,
 		);
