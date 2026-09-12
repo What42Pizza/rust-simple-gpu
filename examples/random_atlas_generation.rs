@@ -225,8 +225,7 @@ fn main() -> Result<()> {
 		],
 		&main_vertex_shader,
 		&main_fragment_shader,
-		window_surface.wgpu_format,
-		1,
+		&[window_surface.wgpu_format],
 		&mut gpu_instance,
 	);
 

@@ -39,8 +39,7 @@ pub fn create_2d_pipeline(
 	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
 	vertex_shader: &wgpu::ShaderModule,
 	fragment_shader: &wgpu::ShaderModule,
-	output_format: wgpu::TextureFormat,
-	texture_input_count: u32,
+	output_formats: &[wgpu::TextureFormat],
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
 	/* This is not needed in future version of wgpu */
@@ -49,12 +48,20 @@ pub fn create_2d_pipeline(
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
 	let pipeline_layout = get_pipeline_layout(
-		texture_input_count,
+		output_formats.len() as u32,
 		&mut gpu_instance.wgpu_pipeline_layouts,
 		&gpu_instance.wgpu_uniforms_bind_group_layout,
 		&gpu_instance.wgpu_texture_bind_group_layout,
 		&gpu_instance.wgpu_device,
 	);
+	let mut targets = vec![];
+	for output_format in output_formats {
+		targets.push(Some(wgpu::ColorTargetState {
+			format: *output_format,
+			blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+			write_mask: wgpu::ColorWrites::ALL,
+		}));
+	}
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -69,11 +76,7 @@ pub fn create_2d_pipeline(
 			fragment: Some(wgpu::FragmentState {
 				module: fragment_shader,
 				entry_point: None,
-				targets: &[Some(wgpu::ColorTargetState {
-					format: output_format,
-					blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-					write_mask: wgpu::ColorWrites::ALL,
-				})],
+				targets: &targets,
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			}),
 			primitive: wgpu::PrimitiveState::default(),
@@ -95,8 +98,7 @@ pub fn create_3d_pipeline(
 	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
 	vertex_shader: &wgpu::ShaderModule,
 	fragment_shader: &wgpu::ShaderModule,
-	output_format: wgpu::TextureFormat,
-	texture_input_count: u32,
+	output_formats: &[wgpu::TextureFormat],
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
 	/* This is not needed in future version of wgpu */
@@ -105,12 +107,20 @@ pub fn create_3d_pipeline(
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
 	let pipeline_layout = get_pipeline_layout(
-		texture_input_count,
+		output_formats.len() as u32,
 		&mut gpu_instance.wgpu_pipeline_layouts,
 		&gpu_instance.wgpu_uniforms_bind_group_layout,
 		&gpu_instance.wgpu_texture_bind_group_layout,
 		&gpu_instance.wgpu_device,
 	);
+	let mut targets = vec![];
+	for output_format in output_formats {
+		targets.push(Some(wgpu::ColorTargetState {
+			format: *output_format,
+			blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+			write_mask: wgpu::ColorWrites::ALL,
+		}));
+	}
 	gpu_instance
 		.wgpu_device
 		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -125,11 +135,7 @@ pub fn create_3d_pipeline(
 			fragment: Some(wgpu::FragmentState {
 				module: fragment_shader,
 				entry_point: None,
-				targets: &[Some(wgpu::ColorTargetState {
-					format: output_format,
-					blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-					write_mask: wgpu::ColorWrites::ALL,
-				})],
+				targets: &targets,
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			}),
 			primitive: wgpu::PrimitiveState {
