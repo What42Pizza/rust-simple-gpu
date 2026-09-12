@@ -47,6 +47,7 @@ pub fn create_2d_pipeline(
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
+	#[allow(clippy::cast_possible_truncation)]
 	let pipeline_layout = get_pipeline_layout(
 		output_formats.len() as u32,
 		&mut gpu_instance.wgpu_pipeline_layouts,
@@ -106,6 +107,7 @@ pub fn create_3d_pipeline(
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
+	#[allow(clippy::cast_possible_truncation)]
 	let pipeline_layout = get_pipeline_layout(
 		output_formats.len() as u32,
 		&mut gpu_instance.wgpu_pipeline_layouts,

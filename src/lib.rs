@@ -82,9 +82,9 @@ pub struct GpuInstance {
 	pub wgpu_queue: wgpu::Queue,
 
 	/// This is just a basic sampler with bilinear filtering and coordinate clamping enabled
-	pub wgpu_filtering_sampler: wgpu::Sampler,
+	pub wgpu_linear_sampler: wgpu::Sampler,
 	/// This is just a basic sampler with filtering disabled and coordinate clamping enabled
-	pub wgpu_non_filtering_sampler: wgpu::Sampler,
+	pub wgpu_nearest_sampler: wgpu::Sampler,
 
 	/// This specifies the layout for the uniforms bind group. More:
 	///
@@ -121,7 +121,7 @@ pub struct GpuInstance {
 	///
 	/// - Its bindings are:
 	/// - Bind group 0 binding 0: mipmap level view
-	/// - Bind group 0 binding 1: texture sampler (filtering)
+	/// - Bind group 0 binding 1: texture sampler
 	pub wgpu_mipmap_pipeline_layout: wgpu::PipelineLayout,
 
 	/// This is the vertex shader used for mipmap generation, and all it does it place 4 vertices at the 4 corners of the screen
@@ -162,12 +162,12 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 			trace: wgpu::Trace::Off,
 		}))?;
 
-	let filtering_sampler = make_sampler(
+	let linear_sampler = make_sampler(
 		wgpu::AddressMode::ClampToEdge,
 		wgpu::FilterMode::Linear,
 		&wgpu_device,
 	);
-	let non_filtering_sampler = make_sampler(
+	let nearest_sampler = make_sampler(
 		wgpu::AddressMode::ClampToEdge,
 		wgpu::FilterMode::Nearest,
 		&wgpu_device,
@@ -312,8 +312,8 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		wgpu_device,
 		wgpu_queue,
 
-		wgpu_filtering_sampler: filtering_sampler,
-		wgpu_non_filtering_sampler: non_filtering_sampler,
+		wgpu_linear_sampler: linear_sampler,
+		wgpu_nearest_sampler: nearest_sampler,
 
 		wgpu_uniforms_bind_group_layout: uniforms_bind_group_layout,
 		wgpu_texture_bind_group_layout: texture_bind_group_layout,
@@ -412,7 +412,8 @@ pub struct FpsCounter {
 }
 
 impl FpsCounter {
-	/// Creates a new FpsCounter
+	/// Creates a new `FpsCounter`
+	#[must_use]
 	pub fn new() -> Self {
 		Self {
 			count: 0,
@@ -425,11 +426,18 @@ impl FpsCounter {
 		let current = Instant::now();
 		let elapsed = current.duration_since(self.last_print_time);
 		if elapsed.as_secs() >= 1 {
+			#[allow(clippy::cast_precision_loss)]
 			let fps = self.count as f32 / elapsed.as_secs_f32();
 			println!("Fps: {fps:.1}");
 			self.count = 0;
 			self.last_print_time = current;
 		}
+	}
+}
+
+impl Default for FpsCounter {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 

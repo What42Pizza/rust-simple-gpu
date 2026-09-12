@@ -8,8 +8,6 @@ use std::{
 
 /// Holds the data for the vertices of a mesh, or the instances of mesh
 ///
-///
-///
 /// Note: this can be automatically dereferenced to its `cpu_buffer` field
 pub struct VertexBuffer<VertexRawData: BufferItemRawData> {
 	/// Holds a cpu-side copy of the vertex buffer's data
@@ -61,7 +59,7 @@ pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(
 	}
 }
 
-/// Similar to `create_vertex_buffer()`, but also initializes the buffer with values
+/// Similar to [`create_vertex_buffer()`], but also initializes the buffer with values
 pub fn init_vertex_buffer<VertexRawData: BufferItemRawData>(
 	name: impl Into<String>,
 	items: impl Into<Vec<VertexRawData>>,

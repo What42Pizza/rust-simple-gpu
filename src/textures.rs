@@ -34,9 +34,6 @@ pub struct Texture {
 
 /// Creates a new texture with a given size and format. More:
 ///
-/// - If `samplers` is `None`, it will be created with the default samplers:
-///   - A bilinear sampler that clamps coordinates
-///   - A nearest sampler that clamps coordinates
 /// - `mip_count` must be at least 1
 #[must_use]
 #[inline]
@@ -91,7 +88,7 @@ pub fn create_texture(
 					wgpu::BindGroupEntry {
 						binding: 1,
 						resource: wgpu::BindingResource::Sampler(
-							&gpu_instance.wgpu_filtering_sampler,
+							&gpu_instance.wgpu_linear_sampler,
 						),
 					},
 				],
@@ -114,9 +111,9 @@ pub fn create_texture(
 					binding: 1,
 					resource: wgpu::BindingResource::Sampler(
 						if filter_mode == wgpu::FilterMode::Linear {
-							&gpu_instance.wgpu_filtering_sampler
+							&gpu_instance.wgpu_linear_sampler
 						} else {
-							&gpu_instance.wgpu_non_filtering_sampler
+							&gpu_instance.wgpu_nearest_sampler
 						},
 					),
 				},
@@ -195,9 +192,9 @@ pub fn create_depth_texture(
 					binding: 1,
 					resource: wgpu::BindingResource::Sampler(
 						if filter_mode == wgpu::FilterMode::Linear {
-							&gpu_instance.wgpu_filtering_sampler
+							&gpu_instance.wgpu_linear_sampler
 						} else {
-							&gpu_instance.wgpu_non_filtering_sampler
+							&gpu_instance.wgpu_nearest_sampler
 						},
 					),
 				},
@@ -272,9 +269,9 @@ pub fn set_filter_mode(
 					binding: 1,
 					resource: wgpu::BindingResource::Sampler(
 						if filter_mode == wgpu::FilterMode::Linear {
-							&gpu_instance.wgpu_filtering_sampler
+							&gpu_instance.wgpu_linear_sampler
 						} else {
-							&gpu_instance.wgpu_non_filtering_sampler
+							&gpu_instance.wgpu_nearest_sampler
 						},
 					),
 				},
@@ -287,9 +284,6 @@ pub fn set_filter_mode(
 
 /// Creates a texture from a given file path. More:
 ///
-/// - If `samplers` is `None`, it will be created with the default samplers:
-///   - A bilinear sampler that clamps coordinates
-///   - A nearest sampler that clamps coordinates
 /// - `mip_count` must be at least 1
 /// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`]
 /// - This is only available when the "image" feature is enabled
@@ -354,9 +348,6 @@ pub struct AtlasAllocator {
 ///
 /// Important note: the returned allocator is scaled down by `2 ^ (mip_count - 1)` so that the allocated positions are automatically aligned to a mip boundary. This means that if you want to use the allocator yourself, you need to shift the output locations right by `mip_count - 1`
 ///
-/// - If `samplers` is `None`, it will be created with the default samplers:
-///   - A bilinear sampler that clamps coordinates
-///   - A nearest sampler that clamps coordinates
 /// - `mip_count` must be at least 1
 /// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`]
 /// - This is only available when the "atlas" feature is enabled
@@ -596,9 +587,6 @@ pub const fn fit_mip(v: u32, max_mip: u32) -> u32 {
 
 /// Creates a texture atlas from a given folder
 ///
-/// - If `samplers` is `None`, it will be created with the default samplers:
-///   - A bilinear sampler that clamps coordinates
-///   - A nearest sampler that clamps coordinates
 /// - `mip_count` must be at least 1
 /// - The result always uses the format [`wgpu::TextureFormat::Rgba8Unorm`]
 /// - This is only available when the both the "image" and "atlas" features are enabled
@@ -668,16 +656,16 @@ pub fn create_texture_atlas_from_path(
 /// Creates a basic [`wgpu::Sampler`] with a specified wrapping mode and filtering mode
 #[must_use]
 pub fn make_sampler(
-	wrapping: wgpu::AddressMode,
-	filter: wgpu::FilterMode,
+	wrap_mode: wgpu::AddressMode,
+	filter_mode: wgpu::FilterMode,
 	wgpu_device: &wgpu::Device,
 ) -> wgpu::Sampler {
 	wgpu_device.create_sampler(&wgpu::SamplerDescriptor {
-		address_mode_u: wrapping,
-		address_mode_v: wrapping,
-		address_mode_w: wrapping,
-		mag_filter: filter,
-		min_filter: filter,
+		address_mode_u: wrap_mode,
+		address_mode_v: wrap_mode,
+		address_mode_w: wrap_mode,
+		mag_filter: filter_mode,
+		min_filter: filter_mode,
 		mipmap_filter: wgpu::MipmapFilterMode::Linear,
 		..Default::default()
 	})
