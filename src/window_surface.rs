@@ -73,7 +73,7 @@ pub fn present_frame(surface_tex: wgpu::SurfaceTexture, _gpu_instance: &GpuInsta
 ///
 /// # Errors
 ///
-/// This returns an error if it fails to retrieve the window handles, and it always returns the mutable window reference .
+/// This returns an error if it fails to retrieve the window handles, and it always returns the mutable window reference.
 #[inline]
 pub fn get_window_surface_mut<'a, T: HasDisplayHandle + HasWindowHandle>(
 	gpu_instance: &GpuInstance,

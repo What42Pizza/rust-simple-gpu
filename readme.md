@@ -1,6 +1,6 @@
 # Simple Gpu
 
-This is a tiny abstraction over WGPU that is inspired by the simplicity and directness of multimedia libraries like raylib and SDL. The main goal of this crate is to provide a simple and convenient way of rendering custom data with custom shaders.
+This is a layer over WGPU that is inspired by the simplicity of multimedia libraries like raylib and SDL. The main goal of this crate is to provide a convenient way of rendering custom data with custom shaders.
 
 ### Other similar crates:
 
@@ -10,12 +10,13 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
 
 ### What sets this apart:
 
-- This focuses entirely on "vertex data -> vertex shader -> fragment shader -> texture" rendering.
-- The main purpose of this crate is to give a good set of defaults, and this otherwise sticks very closely to wgpu's types and function calls. In fact, you could easily transition from using this crate to using wgpu directly wherever needed.
-- This crate is extremely hackable, meaning you can easily edit the crate's code to fit your own needs. This is because:
-  - All type fields are public, meaning you have unrestricted access to use and/or replace the underlying wgpu types.
-  - This sticks very closely to wgpu's type and function calls (as stated earlier).
-  - This is licensed using CC0, meaning this is dedicated to the public domain.
+- This focuses entirely on "vertex data -> vertex shader -> fragment shader -> textures" rendering.
+- This gives a convenient rendering interface without trying to hide what's underneath.
+- This is more of a toolbox, where you can choose which functions you will and won't use.
+- This crate is extremely hackable because:
+  - All struct fields are public, meaning you still have full control over the state and data.
+  - This sticks very closely to wgpu's type and function calls, allowing you to easily work directly with wgpu wherever needed.
+  - This is dedicated to the public domain (licensed under CC0), meaning you can copy and tweak this crate's code for your own needs.
 
 ### Workflow / full walkthrough:
 
@@ -30,7 +31,7 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
   - A `GpuInstance`
   - The shaders you will use (Glsl is suggested)
   - A buffer for uniforms
-  - The textures you will render (each render pass expects one texture input, so atlases are useful here)
+  - The textures you will render
   - A depth texture (optional)
   - A pipeline (specifies the shaders, vertex input format, and output texture format that it will use)
   - Vertex data
@@ -43,13 +44,23 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
   - Finish a render pass with `simple_gpu::finish_render_pass()`
   - Finish the frame with `simple_gpu::finish_frame()` (or call `::submit_gpu_commands()` then `::present_frame()`)
 
+### A few more features of this crate:
+
+- Can load files directly into textures
+- Can pack textures into atlases
+- Can dynamically generate mipmaps
+- Automatically creates pipeline layouts
+- Vertex data buffers can be dereferenced to their `cpu_buffer: Vec<T>` field for convenience
+
+See the full api [here](https://docs.rs/simple-gpu/latest/simple_gpu/all.html)
+
 ### What this crate decides for you:
 
 - The bind groups are:
   - Bind group 0:
     - Binding 0: the uniforms buffer
   - All other bind groups:
-    - Binding 0: a texture view (which can / should be a texture atlas)
+    - Binding 0: a texture view
     - Binding 1: a texture sampler
 - 3D rendering has:
   - Counter-clockwise triangles with back-face culling
@@ -61,4 +72,4 @@ This is a tiny abstraction over WGPU that is inspired by the simplicity and dire
 - Glsl is the default shader language (though there are utility functions for wgsl too)
 - The window's surface texture must support an srgb output
 - Vertex input buffers can only be updated by the cpu and read by vertex shaders
-- A whole lot of other boring details (color blending is enabled, fragment shaders store their outputs, etc)
+- A whole lot of other boring details (fragment shaders store their outputs, shader files can only have one entry point, etc)
