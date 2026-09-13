@@ -16,7 +16,7 @@ pub struct WindowSurface<'a> {
 	pub wgpu_capabilities: wgpu::SurfaceCapabilities,
 }
 
-			
+
 
 /// Updates a surface's size to match the window
 #[inline]
