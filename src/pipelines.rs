@@ -42,50 +42,16 @@ pub fn create_2d_pipeline(
 	output_formats: &[wgpu::TextureFormat],
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
-	/* This is not needed in future version of wgpu */
-	let vertex_buffer_layouts = vertex_buffer_layouts
-		.iter()
-		.map(|v| v.as_ref().unwrap().clone())
-		.collect::<Vec<_>>();
-	#[allow(clippy::cast_possible_truncation)]
-	let pipeline_layout = get_pipeline_layout(
-		output_formats.len() as u32,
-		&mut gpu_instance.wgpu_pipeline_layouts,
-		&gpu_instance.wgpu_uniforms_bind_group_layout,
-		&gpu_instance.wgpu_texture_bind_group_layout,
-		&gpu_instance.wgpu_device,
-	);
-	let mut targets = vec![];
-	for output_format in output_formats {
-		targets.push(Some(wgpu::ColorTargetState {
-			format: *output_format,
-			blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-			write_mask: wgpu::ColorWrites::ALL,
-		}));
-	}
-	gpu_instance
-		.wgpu_device
-		.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-			label: Some(name),
-			layout: Some(pipeline_layout),
-			vertex: wgpu::VertexState {
-				module: vertex_shader,
-				entry_point: None,
-				buffers: &vertex_buffer_layouts,
-				compilation_options: wgpu::PipelineCompilationOptions::default(),
-			},
-			fragment: Some(wgpu::FragmentState {
-				module: fragment_shader,
-				entry_point: None,
-				targets: &targets,
-				compilation_options: wgpu::PipelineCompilationOptions::default(),
-			}),
-			primitive: wgpu::PrimitiveState::default(),
-			depth_stencil: None,
-			multisample: wgpu::MultisampleState::default(),
-			multiview_mask: None,
-			cache: None,
-		})
+	create_pipeline(
+		name,
+		vertex_buffer_layouts,
+		vertex_shader,
+		fragment_shader,
+		output_formats,
+		wgpu::PrimitiveState::default(),
+		None,
+		gpu_instance,
+	)
 }
 
 /// Creates a basic 3d rendering pipeline with back-face culling, counter-clockwise triangles, a 24-bit float depth buffer expected, and the vertex list treated as a triangles list
@@ -102,8 +68,49 @@ pub fn create_3d_pipeline(
 	output_formats: &[wgpu::TextureFormat],
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
-	/* This is not needed in future version of wgpu */
-	let vertex_buffer_layouts = vertex_buffer_layouts
+	create_pipeline(
+		name,
+		vertex_buffer_layouts,
+		vertex_shader,
+		fragment_shader,
+		output_formats,
+		wgpu::PrimitiveState {
+			topology: wgpu::PrimitiveTopology::TriangleList,
+			strip_index_format: None,
+			front_face: wgpu::FrontFace::default(),
+			cull_mode: Some(wgpu::Face::Back),
+			polygon_mode: wgpu::PolygonMode::Fill,
+			unclipped_depth: false,
+			conservative: false,
+		},
+		Some(wgpu::DepthStencilState {
+			format: wgpu::TextureFormat::Depth24Plus,
+			depth_write_enabled: Some(true),
+			depth_compare: Some(wgpu::CompareFunction::Less),
+			stencil: wgpu::StencilState::default(),
+			bias: wgpu::DepthBiasState::default(),
+		}),
+		gpu_instance,
+	)
+}
+
+/// Creates a generic pipeline
+///
+/// # Panics
+///
+/// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed item must be the `Some` variant or this will panic.
+#[must_use]
+pub fn create_pipeline(
+	name: &str,
+	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
+	vertex_shader: &wgpu::ShaderModule,
+	fragment_shader: &wgpu::ShaderModule,
+	output_formats: &[wgpu::TextureFormat],
+	vertex_assembly: wgpu::PrimitiveState,
+	depth_stencil: Option<wgpu::DepthStencilState>,
+	gpu_instance: &mut GpuInstance,
+) -> wgpu::RenderPipeline {
+	let vertex_buffer_layouts = vertex_buffer_layouts // This is not needed in future version of wgpu
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
@@ -140,22 +147,8 @@ pub fn create_3d_pipeline(
 				targets: &targets,
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			}),
-			primitive: wgpu::PrimitiveState {
-				topology: wgpu::PrimitiveTopology::TriangleList,
-				strip_index_format: None,
-				front_face: wgpu::FrontFace::default(),
-				cull_mode: Some(wgpu::Face::Back),
-				polygon_mode: wgpu::PolygonMode::Fill,
-				unclipped_depth: false,
-				conservative: false,
-			},
-			depth_stencil: Some(wgpu::DepthStencilState {
-				format: wgpu::TextureFormat::Depth24Plus,
-				depth_write_enabled: Some(true),
-				depth_compare: Some(wgpu::CompareFunction::Less),
-				stencil: wgpu::StencilState::default(),
-				bias: wgpu::DepthBiasState::default(),
-			}),
+			primitive: vertex_assembly,
+			depth_stencil,
 			multisample: wgpu::MultisampleState::default(),
 			multiview_mask: None,
 			cache: None,
@@ -165,12 +158,13 @@ pub fn create_3d_pipeline(
 
 
 /// Starts a 2d render pass
-/// 
+///
 /// Notes:
 /// - For the output textures, you must give a list where each item is a texture view along with an optional clear color
-/// - A render pass can (and should) be reused for multiple draw calls if possible
+/// - A render pass can (and should) be reused for multiple draw calls wherever possible
 pub fn start_2d_render_pass<'a>(
 	name: &str,
+	uniforms: &wgpu::BindGroup,
 	output_textures: &[(&wgpu::TextureView, Option<wgpu::Color>)],
 	command_encoder: &'a mut wgpu::CommandEncoder,
 ) -> wgpu::RenderPass<'a> {
@@ -191,23 +185,26 @@ pub fn start_2d_render_pass<'a>(
 			},
 		}));
 	}
-	command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+	let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 		label: Some(name),
 		color_attachments: &color_attachments,
 		depth_stencil_attachment: None,
 		timestamp_writes: None,
 		occlusion_query_set: None,
 		multiview_mask: None,
-	})
+	});
+	render_pass.set_bind_group(0, uniforms, &[]);
+	render_pass
 }
 
 /// Starts a 3d render pass
-/// 
+///
 /// Notes:
 /// - For the output textures, you must give a list where each item is a texture view along with an optional clear color
-/// - A render pass can (and should) be reused for multiple draw calls if possible
+/// - A render pass can (and should) be reused for multiple draw calls wherever possible
 pub fn start_3d_render_pass<'a>(
 	name: &str,
+	uniforms: &wgpu::BindGroup,
 	output_textures: &[(&wgpu::TextureView, Option<wgpu::Color>)],
 	depth_tex: &wgpu::TextureView,
 	clear_depth: bool,
@@ -230,7 +227,7 @@ pub fn start_3d_render_pass<'a>(
 			},
 		}));
 	}
-	command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+	let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 		label: Some(name),
 		color_attachments: &color_attachments,
 		depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
@@ -248,7 +245,9 @@ pub fn start_3d_render_pass<'a>(
 		timestamp_writes: None,
 		occlusion_query_set: None,
 		multiview_mask: None,
-	})
+	});
+	render_pass.set_bind_group(0, uniforms, &[]);
+	render_pass
 }
 
 
@@ -274,12 +273,10 @@ pub fn render(
 	vertex_buffers: &[&wgpu::Buffer],
 	index_buffer: Option<&IndexBuffer>,
 	textures: &[&Texture],
-	uniforms: &wgpu::BindGroup,
 	vertex_count: u32,
 	instance_count: u32,
 ) {
 	render_pass.set_pipeline(pipeline);
-	render_pass.set_bind_group(0, uniforms, &[]);
 	for (i, texture) in textures.iter().enumerate() {
 		#[allow(clippy::cast_possible_truncation)]
 		render_pass.set_bind_group(i as u32 + 1, &texture.wgpu_bind_group, &[]);

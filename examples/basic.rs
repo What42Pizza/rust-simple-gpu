@@ -368,6 +368,7 @@ fn main() -> Result<()> {
 
 		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
+			&data.uniforms_buffer.wgpu_bind_group,
 			&[(&surface_tex_view, Some(wgpu::Color::WHITE))],
 			&data.textures.depth_tex.wgpu_view,
 			true,
@@ -383,7 +384,6 @@ fn main() -> Result<()> {
 			],
 			Some(&data.index_buffer),
 			&[&data.textures.wall_tex],
-			&data.uniforms_buffer.wgpu_bind_group,
 			data.vertex_buffer.wgpu_buffer_len,
 			data.instance_buffer.wgpu_buffer_len,
 		);

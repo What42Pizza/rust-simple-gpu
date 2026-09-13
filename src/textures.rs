@@ -87,9 +87,7 @@ pub fn create_texture(
 					},
 					wgpu::BindGroupEntry {
 						binding: 1,
-						resource: wgpu::BindingResource::Sampler(
-							&gpu_instance.wgpu_linear_sampler,
-						),
+						resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_linear_sampler),
 					},
 				],
 			});

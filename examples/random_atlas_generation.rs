@@ -403,6 +403,7 @@ fn main() -> Result<()> {
 
 		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
+			&data.uniforms_buf.wgpu_bind_group,
 			&[(&surface_tex_view, Some(wgpu::Color::WHITE))],
 			&data.textures.depth_tex.wgpu_view,
 			true,
@@ -415,7 +416,6 @@ fn main() -> Result<()> {
 			&[&data.vertex_buf.wgpu_buffer, &data.instance_buf.wgpu_buffer],
 			Some(&data.index_buf),
 			&[&data.textures.atlas],
-			&data.uniforms_buf.wgpu_bind_group,
 			data.vertex_buf.wgpu_buffer_len,
 			data.instance_buf.wgpu_buffer_len,
 		);
