@@ -383,7 +383,7 @@ fn main() -> Result<()> {
 				&data.instance_buffer.wgpu_buffer,
 			],
 			Some(&data.index_buffer),
-			&[&data.textures.wall_tex],
+			&[&data.textures.wall_tex.wgpu_bind_group],
 			data.vertex_buffer.wgpu_buffer_len,
 			data.instance_buffer.wgpu_buffer_len,
 		);

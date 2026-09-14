@@ -387,7 +387,6 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 		);
 		total_allocator_pixels += u64::from(tex_width) * u64::from(tex_height);
 	}
-	#[allow(clippy::cast_possible_truncation)]
 	let atlas_size = total_allocator_pixels.isqrt() as u32 + 2;
 	let (mut atlas_width, mut atlas_height) = if let Some((min_width, min_height)) = min_size {
 		(atlas_size.max(min_width), atlas_size.max(min_height))

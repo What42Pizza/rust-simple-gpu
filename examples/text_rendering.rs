@@ -5,6 +5,8 @@
 // - wasd
 // - space: up
 // - left shift: down
+// - q: turn left
+// - e: turn right
 // - esc: quit
 
 
@@ -21,47 +23,20 @@ use sdl3::{
 	event::{Event, WindowEvent},
 	keyboard::{KeyboardState, Keycode},
 	libc::rand,
-	mouse::{MouseButton, MouseState},
 };
 use simple_gpu::BufferItemRawData;
-use std::{
-	path::PathBuf,
-	time::{Duration, Instant},
-};
+use std::{path::PathBuf, time::Instant};
 
 
 
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 struct UniformsRawData {
-	pub view_mat: Mat4,
-	pub proj_mat: Mat4,
-	pub proj_view_mat: Mat4,
-	pub inv_view_mat: Mat4,
-	pub inv_proj_mat: Mat4,
-	pub inv_proj_view_mat: Mat4,
+	dummy: f32,
 }
 
 impl UniformsRawData {
-	fn update(&mut self, program_data: &ProgramData) {
-		let camera = &program_data.camera;
-		let camera_target = glam::Vec3::new(
-			camera.rot_xz.cos() * camera.rot_y.cos(),
-			camera.rot_y.sin(),
-			camera.rot_xz.sin() * camera.rot_y.cos(),
-		);
-		self.view_mat = view::look_to_mat4(camera.pos, camera_target, Vec3::new(0.0, 1.0, 0.0));
-		self.proj_mat = proj::opengl::perspective(
-			camera.fov_radians,
-			program_data.aspect_ratio,
-			camera.near_plane,
-			camera.far_plane,
-		);
-		self.proj_view_mat = self.proj_mat * self.view_mat;
-		self.inv_view_mat = self.view_mat.inverse();
-		self.inv_proj_mat = self.proj_mat.inverse();
-		self.inv_proj_view_mat = self.proj_view_mat.inverse();
-	}
+	fn update(&mut self, program_data: &ProgramData) {}
 }
 
 
@@ -75,12 +50,12 @@ struct ProgramData {
 	aspect_ratio: f32,
 
 	pipeline: wgpu::RenderPipeline,
-	vertex_buf: simple_gpu::VertexBuffer<VertexData>,
-	index_buf: simple_gpu::IndexBuffer,
-	instance_buf: simple_gpu::VertexBuffer<InstanceData>,
-	textures: Textures,
+	vertex_buffer: simple_gpu::VertexBuffer<VertexData>,
+	index_buffer: simple_gpu::IndexBuffer,
+	instance_buffer: simple_gpu::VertexBuffer<InstanceData>,
+	text_renderer: simple_gpu::TextRenderer,
 
-	uniforms_buf: simple_gpu::UniformsBuffer<UniformsRawData>,
+	uniforms_buffer: simple_gpu::UniformsBuffer<UniformsRawData>,
 }
 
 struct CameraData {
@@ -94,7 +69,7 @@ struct CameraData {
 
 struct Textures {
 	depth_tex: simple_gpu::DepthTexture,
-	atlas: simple_gpu::Texture,
+	wall_tex: simple_gpu::Texture,
 }
 
 
@@ -109,54 +84,6 @@ simple_gpu::make_vertex_buffer_type!(Instance, struct InstanceData {
 	pos: [f32; 3] as location 3: Float32x3,
 });
 
-
-
-
-fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture {
-	let mut atlas_textures = vec![];
-	for _ in 0..32 + (127 & unsafe { rand() }) {
-		let width = (2 + (7 & unsafe { rand() as u32 })) * (2 + (7 & unsafe { rand() as u32 }));
-		let height = (2 + (7 & unsafe { rand() as u32 })) * (2 + (7 & unsafe { rand() as u32 }));
-		let r = 16 + (127 & unsafe { rand() as u16 });
-		let g = 16 + (127 & unsafe { rand() as u16 });
-		let b = 16 + (127 & unsafe { rand() as u16 });
-		let mut data = vec![];
-		for y in 0..height {
-			for x in 0..width {
-				let mult = (x - y) % 16 + 8;
-				data.push((r * mult as u16 / 16) as u8);
-				data.push((g * mult as u16 / 16) as u8);
-				data.push((b * mult as u16 / 16) as u8);
-				data.push(255);
-			}
-		}
-		atlas_textures.push((width, height, data));
-	}
-	let start = Instant::now();
-	let (mut atlas, _tex_locations, _atlas_allocator) = simple_gpu::create_texture_atlas(
-		"main atlas",
-		&atlas_textures,
-		wgpu::TextureFormat::Rgba8Unorm,
-		wgpu::FilterMode::Nearest,
-		4,
-		None,
-		&gpu_instance,
-	);
-	println!(
-		"generated new atlas, time taken: {} micros",
-		start.elapsed().as_micros()
-	);
-	let start = Instant::now();
-	let mut command_encoder =
-		simple_gpu::start_command_encoder("generate atlas mipmaps", gpu_instance);
-	simple_gpu::refill_mipmaps(&atlas, &mut command_encoder, gpu_instance);
-	simple_gpu::submit_gpu_commands(command_encoder, gpu_instance);
-	println!(
-		"Updated atlas mipmap levels, time taken: {} micros",
-		start.elapsed().as_micros()
-	);
-	atlas
-}
 
 
 
@@ -176,7 +103,7 @@ fn main() -> Result<()> {
 	let sdl = sdl3::init()?;
 	let video = sdl.video()?;
 	let mut window = video
-		.window("Simple Gpu Example", 1280, 720)
+		.window("Simple Gpu Example", 600, 600)
 		.position_centered()
 		.resizable()
 		.hidden()
@@ -199,16 +126,15 @@ fn main() -> Result<()> {
 	// shaders
 	let shaders_path = assets_path.join("shaders");
 	let main_vertex_shader =
-		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("main.vsh"), &gpu_instance, &[])?;
+		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("temp.vsh"), &gpu_instance, &[])?;
 	let main_fragment_shader =
-		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("main.fsh"), &gpu_instance, &[])?;
+		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("temp.fsh"), &gpu_instance, &[])?;
 
 	// uniforms
 	let uniforms_buffer = simple_gpu::create_uniforms_buffer::<UniformsRawData>(&gpu_instance);
 	let mut uniforms_raw_data = UniformsRawData::zeroed();
 
 	// textures
-	let textures_path = assets_path.join("textures");
 	let mut depth_tex = simple_gpu::create_depth_texture(
 		"main depth tex",
 		window_size,
@@ -216,8 +142,18 @@ fn main() -> Result<()> {
 		&gpu_instance,
 	);
 
+	// font
+	let font_file = std::fs::read_to_string(assets_path.join("font.txt"))?;
+	let font = std::fs::read(assets_path.join(font_file))?;
+	let text_renderer = simple_gpu::create_text_renderer(&font, 100, None, &gpu_instance)?;
+	//for i in 64 .. 256 {
+	//	let text_renderer = simple_gpu::create_text_renderer(&font, i, None, &gpu_instance)?;
+	//	println!("{i}: {}", simple_gpu::approximate_char_atlas_quality(&text_renderer.atlas_data, text_renderer.atlas_allocator.size().width as u32));
+	//}
+	//panic!();
+
 	// pipeline
-	let pipeline = simple_gpu::create_3d_pipeline(
+	let pipeline = simple_gpu::create_2d_pipeline(
 		"main pipeline",
 		&[
 			Some(VertexData::WGPU_LAYOUT),
@@ -265,13 +201,10 @@ fn main() -> Result<()> {
 	let mut instance_buffer = simple_gpu::init_vertex_buffer(
 		"main instance buffer",
 		&[InstanceData {
-			pos: [0.0, 0.0, -1.5],
+			pos: [0.5, 0.5, -2.5],
 		}],
 		&gpu_instance,
 	);
-
-	// randomly generated atlas
-	let atlas = make_atlas(&mut gpu_instance);
 
 	// assemble program's data
 	let mut data = ProgramData {
@@ -290,12 +223,12 @@ fn main() -> Result<()> {
 		aspect_ratio: window_size.0 as f32 / window_size.1 as f32,
 
 		pipeline,
-		vertex_buf: vertex_buffer,
-		index_buf: index_buffer,
-		instance_buf: instance_buffer,
-		textures: Textures { depth_tex, atlas },
+		vertex_buffer,
+		index_buffer,
+		instance_buffer,
+		text_renderer,
 
-		uniforms_buf: uniforms_buffer,
+		uniforms_buffer,
 	};
 
 
@@ -324,12 +257,6 @@ fn main() -> Result<()> {
 						&gpu_instance,
 						(new_width as u32, new_height as u32),
 					);
-					data.textures.depth_tex = simple_gpu::create_depth_texture(
-						"main depth texture",
-						window.size(),
-						wgpu::FilterMode::Linear,
-						&gpu_instance,
-					);
 					data.aspect_ratio = new_width as f32 / new_height as f32;
 				}
 				Event::Quit { .. }
@@ -343,12 +270,6 @@ fn main() -> Result<()> {
 				} => {
 					println!("closing");
 					data.should_quit = true;
-				}
-				Event::MouseButtonDown {
-					mouse_btn: MouseButton::Left,
-					..
-				} => {
-					data.textures.atlas = make_atlas(&mut gpu_instance);
 				}
 				e => {
 					info!("Unknown event: {e:?}");
@@ -365,10 +286,16 @@ fn main() -> Result<()> {
 			data.camera.pos.x += 0.75 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::W) {
-			data.camera.pos.z -= 0.75 * dt * 2.0;
+			data.camera.pos.z -= 0.75 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::S) {
-			data.camera.pos.z += 0.75 * dt * 2.0;
+			data.camera.pos.z += 0.75 * dt;
+		}
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::Q) {
+			data.camera.rot_xz -= 0.25 * dt;
+		}
+		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::E) {
+			data.camera.rot_xz += 0.25 * dt;
 		}
 		if keyboard_state.is_scancode_pressed(sdl3::keyboard::Scancode::Space) {
 			data.camera.pos.y += 0.75 * dt;
@@ -379,7 +306,11 @@ fn main() -> Result<()> {
 
 		// render
 		uniforms_raw_data.update(&data);
-		simple_gpu::update_uniforms_buffer(&data.uniforms_buf, &uniforms_raw_data, &gpu_instance);
+		simple_gpu::update_uniforms_buffer(
+			&data.uniforms_buffer,
+			&uniforms_raw_data,
+			&gpu_instance,
+		);
 
 		let (surface_tex, surface_tex_view, mut command_encoder) =
 			match simple_gpu::start_frame("render frame", &window_surface, &gpu_instance) {
@@ -391,33 +322,28 @@ fn main() -> Result<()> {
 						&gpu_instance,
 						window.size(),
 					);
-					data.textures.depth_tex = simple_gpu::create_depth_texture(
-						"main depth texture",
-						window.size(),
-						wgpu::FilterMode::Linear,
-						&gpu_instance,
-					);
 					continue;
 				}
 			};
 
-		let mut render_pass = simple_gpu::start_3d_render_pass(
+		let mut render_pass = simple_gpu::start_2d_render_pass(
 			"main render pass",
-			&data.uniforms_buf.wgpu_bind_group,
+			&data.uniforms_buffer.wgpu_bind_group,
 			&[(&surface_tex_view, Some(wgpu::Color::WHITE))],
-			&data.textures.depth_tex.wgpu_view,
-			true,
 			&mut command_encoder,
 		);
 
 		simple_gpu::render(
 			&mut render_pass,
 			&data.pipeline,
-			&[&data.vertex_buf.wgpu_buffer, &data.instance_buf.wgpu_buffer],
-			Some(&data.index_buf),
-			&[&data.textures.atlas.wgpu_bind_group],
-			data.vertex_buf.wgpu_buffer_len,
-			data.instance_buf.wgpu_buffer_len,
+			&[
+				&data.vertex_buffer.wgpu_buffer,
+				&data.instance_buffer.wgpu_buffer,
+			],
+			Some(&data.index_buffer),
+			&[&data.text_renderer.atlas_bind_group],
+			data.vertex_buffer.wgpu_buffer_len,
+			data.instance_buffer.wgpu_buffer_len,
 		);
 
 		simple_gpu::finish_render_pass(render_pass);

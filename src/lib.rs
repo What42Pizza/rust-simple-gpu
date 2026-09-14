@@ -3,6 +3,12 @@
 #![allow(clippy::option_if_let_else)]
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::large_enum_variant)]
+#![allow(
+	clippy::cast_possible_truncation,
+	clippy::cast_precision_loss,
+	clippy::cast_sign_loss,
+	clippy::cast_possible_wrap
+)]
 
 //! # Simple Gpu
 //!
@@ -67,6 +73,11 @@ pub use pipelines::*;
 /// Utilities for loading shaders
 pub mod shaders;
 pub use shaders::*;
+/// Utilities for rendering text
+#[cfg(feature = "text")]
+pub mod text_rendering;
+#[cfg(feature = "text")]
+pub use text_rendering::*;
 
 
 
@@ -400,7 +411,7 @@ pub fn finish_frame(
 #[must_use]
 #[inline]
 pub fn get_gpu_limits(gpu_instance: &GpuInstance) -> wgpu::Limits {
-	gpu_instance.wgpu_adapter.limits()
+	gpu_instance.wgpu_device.limits()
 }
 
 

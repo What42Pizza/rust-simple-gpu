@@ -1,4 +1,4 @@
-use crate::{GpuInstance, IndexBuffer, Texture};
+use crate::{GpuInstance, IndexBuffer};
 
 
 
@@ -10,7 +10,6 @@ pub fn get_pipeline_layout<'a>(
 	texture_group_layout: &wgpu::BindGroupLayout,
 	wgpu_device: &wgpu::Device,
 ) -> &'a wgpu::PipelineLayout {
-	#[allow(clippy::cast_possible_truncation)]
 	for i in wgpu_pipeline_layouts.len() as u32..=texture_input_count {
 		let mut bind_group_layouts = vec![Some(uniforms_group_layout)];
 		for _ in 0..i {
@@ -114,7 +113,6 @@ pub fn create_pipeline(
 		.iter()
 		.map(|v| v.as_ref().unwrap().clone())
 		.collect::<Vec<_>>();
-	#[allow(clippy::cast_possible_truncation)]
 	let pipeline_layout = get_pipeline_layout(
 		output_formats.len() as u32,
 		&mut gpu_instance.wgpu_pipeline_layouts,
@@ -272,18 +270,16 @@ pub fn render(
 	pipeline: &wgpu::RenderPipeline,
 	vertex_buffers: &[&wgpu::Buffer],
 	index_buffer: Option<&IndexBuffer>,
-	textures: &[&Texture],
+	textures: &[&wgpu::BindGroup],
 	vertex_count: u32,
 	instance_count: u32,
 ) {
 	render_pass.set_pipeline(pipeline);
-	for (i, texture) in textures.iter().enumerate() {
-		#[allow(clippy::cast_possible_truncation)]
-		render_pass.set_bind_group(i as u32 + 1, &texture.wgpu_bind_group, &[]);
+	for (i, texture_group) in textures.iter().enumerate() {
+		render_pass.set_bind_group(i as u32 + 1, *texture_group, &[]);
 	}
 
 	for (i, buffer) in vertex_buffers.iter().enumerate() {
-		#[allow(clippy::cast_possible_truncation)]
 		render_pass.set_vertex_buffer(i as u32, buffer.slice(..));
 	}
 	if let Some(index_buffer) = index_buffer {

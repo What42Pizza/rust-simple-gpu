@@ -30,13 +30,17 @@ categories = [ "multimedia", "rendering", "rendering::graphics-api", "graphics",
 [dependencies.guillotiere]
 	version = "0.7.*"
 	optional = true
+[dependencies.fontdue]
+	version = "0.9.*"
+	optional = true
 
 [features]
-default = [ "glsl", "image", "atlas" ]
+default = [ "glsl", "image", "atlas", "text" ]
 glsl = [ "wgpu/glsl" ]
 wgsl = [ "wgpu/wgsl" ]
 image = [ "dep:image" ]
 atlas = [ "dep:guillotiere" ]
+text = [ "atlas", "dep:fontdue" ]
 
 [dev-dependencies.sdl3]
 	version = "0.20.*"

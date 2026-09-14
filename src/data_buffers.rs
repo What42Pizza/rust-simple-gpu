@@ -66,7 +66,6 @@ pub fn init_vertex_buffer<VertexRawData: BufferItemRawData>(
 	gpu_instance: &GpuInstance,
 ) -> VertexBuffer<VertexRawData> {
 	let items = items.into();
-	#[allow(clippy::cast_possible_truncation)]
 	let items_len = items.len() as u32;
 	let name = name.into();
 	let buffer = gpu_instance
@@ -92,7 +91,6 @@ pub fn init_vertex_buffer<VertexRawData: BufferItemRawData>(
 /// Sends the data in a [`VertexBuffer`]'s cpu-side buffer into its wgpu buffer
 ///
 /// Note: the wgpu buffer is automatically reallocated if it is not large enough
-#[allow(clippy::cast_possible_truncation)]
 pub fn sync_vertex_buffer<VertexRawData: BufferItemRawData>(
 	vertex_buffer: &mut VertexBuffer<VertexRawData>,
 	gpu_instance: &GpuInstance,
@@ -140,7 +138,6 @@ pub fn create_index_buffer(name: &str, indices: &[u16], gpu_instance: &GpuInstan
 	gpu_instance
 		.wgpu_queue
 		.write_buffer(&buffer, 0, bytemuck::cast_slice(indices));
-	#[allow(clippy::cast_possible_truncation)]
 	IndexBuffer {
 		wgpu_buffer: buffer,
 		count: indices.len() as u32,
