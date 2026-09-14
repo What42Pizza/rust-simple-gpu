@@ -8,7 +8,7 @@ layout(location = 3) in vec3 model_position;
 layout(location = 0) out vec4 vert_color;
 layout(location = 1) out vec2 vert_uv;
 
-layout(set = 0, binding = 0) uniform Camera {
+layout(set = 0, binding = 0) uniform all_uniforms {
 	mat4 view_mat;
 	mat4 proj_mat;
 	mat4 view_proj_mat;

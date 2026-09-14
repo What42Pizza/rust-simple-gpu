@@ -32,11 +32,15 @@ use std::{path::PathBuf, time::Instant};
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 struct UniformsRawData {
-	dummy: f32,
+	screen_width: u32,
+	screen_height: u32,
 }
 
 impl UniformsRawData {
-	fn update(&mut self, program_data: &ProgramData) {}
+	fn update(&mut self, program_data: &ProgramData, screen_size: (u32, u32)) {
+		self.screen_width = screen_size.0;
+		self.screen_height = screen_size.1;
+	}
 }
 
 
@@ -103,7 +107,7 @@ fn main() -> Result<()> {
 	let sdl = sdl3::init()?;
 	let video = sdl.video()?;
 	let mut window = video
-		.window("Simple Gpu Example", 600, 600)
+		.window("Simple Gpu Example", 120, 120)
 		.position_centered()
 		.resizable()
 		.hidden()
@@ -126,9 +130,9 @@ fn main() -> Result<()> {
 	// shaders
 	let shaders_path = assets_path.join("shaders");
 	let main_vertex_shader =
-		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("temp.vsh"), &gpu_instance, &[])?;
+		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("text.vsh"), &gpu_instance, &[])?;
 	let main_fragment_shader =
-		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("temp.fsh"), &gpu_instance, &[])?;
+		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("text.fsh"), &gpu_instance, &[])?;
 
 	// uniforms
 	let uniforms_buffer = simple_gpu::create_uniforms_buffer::<UniformsRawData>(&gpu_instance);
@@ -145,7 +149,7 @@ fn main() -> Result<()> {
 	// font
 	let font_file = std::fs::read_to_string(assets_path.join("font.txt"))?;
 	let font = std::fs::read(assets_path.join(font_file))?;
-	let text_renderer = simple_gpu::create_text_renderer(&font, 100, None, &gpu_instance)?;
+	let text_renderer = simple_gpu::create_text_renderer(font, 64, None, &gpu_instance)?;
 	//for i in 64 .. 256 {
 	//	let text_renderer = simple_gpu::create_text_renderer(&font, i, None, &gpu_instance)?;
 	//	println!("{i}: {}", simple_gpu::approximate_char_atlas_quality(&text_renderer.atlas_data, text_renderer.atlas_allocator.size().width as u32));
@@ -305,7 +309,7 @@ fn main() -> Result<()> {
 		}
 
 		// render
-		uniforms_raw_data.update(&data);
+		uniforms_raw_data.update(&data, window.size());
 		simple_gpu::update_uniforms_buffer(
 			&data.uniforms_buffer,
 			&uniforms_raw_data,

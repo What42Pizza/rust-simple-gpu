@@ -1,23 +1,27 @@
 use crate::{AtlasLocation, GpuInstance, get_gpu_limits, place_texture_in_atlas};
 use anyhow::{Result, anyhow};
-use fontdue::{Font, FontSettings, Metrics};
 use guillotiere::{AtlasAllocator, size2};
 use std::collections::HashMap;
+use swash::{
+	CacheKey, FontRef,
+	scale::{Render, ScaleContext, Source, StrikeWith},
+	zeno::{Format, Placement},
+};
 
 
 
 /// Holds all the data needed for rendering text
 pub struct TextRenderer {
-	/// Holds the [`fontdue::Font`]
-	pub font: Font,
+	/// Holds the raw font data
+	pub font_data: Vec<u8>,
 	/// This is the size at which font is rendered for storage within the character atlas
 	pub rasterize_size: u32,
 	/// This is the atlas that all rendered characters are placed in
 	pub atlas_data: Vec<u8>,
 	/// This is the allocator used for placing characters into the atlas
 	pub atlas_allocator: AtlasAllocator,
-	/// Maps characters to both their location within the atlas and their metrics
-	pub char_to_atlas_mappings: HashMap<char, (AtlasLocation, Metrics)>,
+	/// Maps characters to both their location within the atlas and their placements
+	pub char_to_atlas_mappings: HashMap<char, (AtlasLocation, Placement)>,
 	/// The actual texture for the character atlas
 	pub atlas_texture: wgpu::Texture,
 	/// The view for the character atlas
@@ -35,21 +39,29 @@ pub struct TextRenderer {
 /// This returns an error if:
 /// - The font fails to load
 /// - The full ascii set of characters cannot be placed within the atlas
+///
+/// # Panics
+///
+/// This panics if it a glyph fails to render
 pub fn create_text_renderer(
-	font: &[u8],
+	font: impl Into<Vec<u8>>,
 	rasterize_size: u32,
 	max_atlas_size: Option<u32>,
 	gpu_instance: &GpuInstance,
 ) -> Result<TextRenderer> {
-	let font = Font::from_bytes(
-		font,
-		FontSettings {
-			collection_index: 0,
-			scale: rasterize_size as f32,
-			load_substitutions: true,
-		},
-	)
-	.map_err(|v| anyhow!(v))?;
+	let font_data = font.into();
+	let font_ref = FontRef {
+		data: &font_data,
+		offset: 0,
+		key: CacheKey::new(),
+	};
+
+	let mut scale_context = ScaleContext::new();
+	let mut font_scaler = scale_context
+		.builder(font_ref)
+		.size((rasterize_size * 3) as f32)
+		.hint(true)
+		.build();
 
 	let atlas_size = get_gpu_limits(gpu_instance).max_texture_dimension_2d;
 	let max_atlas_size = max_atlas_size.unwrap_or(rasterize_size * 6);
@@ -57,15 +69,28 @@ pub fn create_text_renderer(
 
 	let mut character_datas_to_place = vec![];
 	for c in '!'..='~' {
-		let (metrics, rasterized) = font.rasterize(c, rasterize_size as f32);
-		character_datas_to_place.push((c, rasterized, metrics));
+		let glyph_id = font_ref.charmap().map(c);
+		let mut bitmap = Render::new(&[Source::Outline, Source::Bitmap(StrikeWith::BestFit)])
+			.format(Format::Alpha)
+			.render(&mut font_scaler, glyph_id)
+			.expect("Failed to render glyph for character");
+		let data = generate_sdf(
+			&bitmap.data,
+			bitmap.placement.width,
+			0.3 / rasterize_size as f32,
+		);
+		bitmap.placement.width = (bitmap.placement.width) / 3 + 2;
+		bitmap.placement.height = (bitmap.placement.height) / 3 + 2;
+		bitmap.placement.left = (bitmap.placement.left + 1) / 3;
+		bitmap.placement.top = (bitmap.placement.top + 1) / 3;
+		character_datas_to_place.push((c, data, bitmap.placement));
 	}
 
 	let mut char_to_atlas_mappings = HashMap::new();
-	let mut atlas_data = vec![0; atlas_size as usize * atlas_size as usize];
+	let mut atlas_data = vec![255; atlas_size as usize * atlas_size as usize];
 	let mut atlas_allocator = AtlasAllocator::new(size2(atlas_size as i32, atlas_size as i32));
 	character_datas_to_place
-		.sort_by_key(|(_c, _data, metrics)| usize::MAX - metrics.width * metrics.height);
+		.sort_by_key(|(_c, _data, placement)| u32::MAX - placement.width * placement.height);
 
 	for (c, data, metrics) in character_datas_to_place {
 		let allocation = atlas_allocator
@@ -156,7 +181,7 @@ pub fn create_text_renderer(
 		});
 
 	Ok(TextRenderer {
-		font,
+		font_data,
 		rasterize_size,
 		atlas_data,
 		atlas_allocator,
@@ -169,34 +194,54 @@ pub fn create_text_renderer(
 
 
 
-/// judges the blurriness of a character atlas
+/// Generates an sdf texture from an alpha texture. More:
+///
+/// - The input is expected to be 3 times larger than the output in both dimensions
+/// - The input is `R8Unorm`, where 0 is fully transparent and 1 is fully opaque
+/// - The output is `R8Unorm`, where 0.5 is at the glyph edge, 0-0.5 is inside, and 0.5-1.0 is outside
 #[must_use]
-pub fn approximate_char_atlas_quality(atlas_data: &[u8], width: u32) -> f64 {
-	let width = width as usize;
-	let mut total_partials = 0;
-	let mut total_linear_partials = 0;
-	for (i, v) in atlas_data.iter().copied().enumerate() {
-		if v == 0 || v == 255 {
+pub fn generate_sdf(input: &[u8], input_width: u32, dist_scale: f32) -> Vec<u8> {
+	let input_height = input.len() as u32 / input_width;
+	let output_width = input_width / 3 + 2;
+	let output_height = input_height / 3 + 2;
+	let mut output = vec![0; (output_width * output_height) as usize];
+
+	let mut edge_points = vec![];
+	for (i, v) in input.iter().copied().enumerate() {
+		if v < 127 {
 			continue;
 		}
-		total_partials += 1;
-		if let Some(left) = atlas_data.get(i - 1)
-			&& *left == v
+		let x = i as u32 % input_width;
+		if (x > 0 && input[i - 1] < 127)
+			|| (x < input_width - 1 && input[i + 1] < 127)
+			|| (i >= input_width as usize && input[i - input_width as usize] < 127)
+			|| (i < input.len() - input_width as usize && input[i + input_width as usize] < 127)
 		{
-			total_linear_partials += 1;
-		} else if let Some(right) = atlas_data.get(i + 1)
-			&& *right == v
-		{
-			total_linear_partials += 1;
-		} else if let Some(up) = atlas_data.get(i - width)
-			&& *up == v
-		{
-			total_linear_partials += 1;
-		} else if let Some(down) = atlas_data.get(i + width)
-			&& *down == v
-		{
-			total_linear_partials += 1;
+			edge_points.push((i as i32 % input_width as i32, i as i32 / input_width as i32));
 		}
 	}
-	1.0 - f64::from(total_linear_partials) / f64::from(total_partials)
+
+	for x in 0..output_width {
+		for y in 0..output_height {
+			let (x_2, y_2) = (x as i32 * 3 - 2, y as i32 * 3 - 2);
+			let mut closest_dist_squared = i32::MAX;
+			for edge_point in &edge_points {
+				let x_dist = edge_point.0 - x_2;
+				let y_dist = edge_point.1 - y_2;
+				let dist_squared = x_dist * x_dist + y_dist * y_dist;
+				closest_dist_squared = closest_dist_squared.min(dist_squared);
+			}
+			let mut dist = (closest_dist_squared as f32).sqrt();
+			if x != 0 && y != 0 && x != output_width - 1 && y != output_height - 1 {
+				let is_positive = input[x_2 as usize + y_2 as usize * input_width as usize] < 127;
+				if !is_positive {
+					dist *= -1.0;
+				}
+			}
+			let unorm_value = (dist.mul_add(dist_scale, 0.5).clamp(0.0, 1.0) * 255.0) as u8;
+			output[x as usize + y as usize * output_width as usize] = unorm_value;
+		}
+	}
+
+	output
 }
