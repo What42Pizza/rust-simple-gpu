@@ -387,6 +387,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	format: wgpu::TextureFormat,
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
+	fill_value: u8,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &mut GpuInstance,
 ) -> CreatedAtlasResult<Vec<AtlasLocation>> {
@@ -474,7 +475,10 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 
 		// note: fills with fully transparent black
 		let mut atlas_tex_data =
-			vec![0; atlas_width as usize * atlas_height as usize * bytes_per_pixel as usize];
+			vec![
+				fill_value;
+				atlas_width as usize * atlas_height as usize * bytes_per_pixel as usize
+			];
 
 		for (width, height, data, i) in &textures {
 			let data = data.as_ref();
@@ -638,6 +642,7 @@ pub fn create_texture_atlas_from_path(
 	recursive: bool,
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
+	fill_value: u8,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &mut GpuInstance,
 ) -> Result<CreatedAtlasResult<HashMap<PathBuf, AtlasLocation>>> {
@@ -680,6 +685,7 @@ pub fn create_texture_atlas_from_path(
 		wgpu::TextureFormat::Rgba8Unorm,
 		filter_mode,
 		mip_count,
+		fill_value,
 		min_size,
 		gpu_instance,
 	);

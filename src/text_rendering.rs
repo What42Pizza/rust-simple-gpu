@@ -97,6 +97,7 @@ pub fn create_text_renderer(
 		wgpu::TextureFormat::R8Unorm,
 		wgpu::FilterMode::Linear,
 		1,
+		255,
 		Some((atlas_size, atlas_size)),
 		gpu_instance,
 	);

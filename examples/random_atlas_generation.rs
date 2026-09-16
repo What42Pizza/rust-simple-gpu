@@ -144,6 +144,7 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 		wgpu::TextureFormat::Rgba8Unorm,
 		wgpu::FilterMode::Nearest,
 		4,
+		0,
 		None,
 		gpu_instance,
 	);
