@@ -23,6 +23,7 @@ use sdl3::{
 	event::{Event, WindowEvent},
 	keyboard::{KeyboardState, Keycode},
 	libc::rand,
+	pixels::{Color, PixelFormat},
 };
 use simple_gpu::BufferItemRawData;
 use std::{path::PathBuf, time::Instant};
@@ -32,14 +33,22 @@ use std::{path::PathBuf, time::Instant};
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 #[repr(C)]
 struct UniformsRawData {
-	screen_width: u32,
-	screen_height: u32,
+	target_size: [u32; 2],
+	text_color: u32,
+	background_color: u32,
 }
 
 impl UniformsRawData {
-	fn update(&mut self, program_data: &ProgramData, screen_size: (u32, u32)) {
-		self.screen_width = screen_size.0;
-		self.screen_height = screen_size.1;
+	fn update(
+		&mut self,
+		program_data: &ProgramData,
+		screen_size: (u32, u32),
+		text_color: Color,
+		background_color: Color,
+	) {
+		self.target_size = [screen_size.0, screen_size.1];
+		self.text_color = text_color.to_u32(&PixelFormat::RGBA32);
+		self.background_color = background_color.to_u32(&PixelFormat::RGBA32);
 	}
 }
 
@@ -107,7 +116,8 @@ fn main() -> Result<()> {
 	let sdl = sdl3::init()?;
 	let video = sdl.video()?;
 	let mut window = video
-		.window("Simple Gpu Example", 120, 120)
+		.window("Simple Gpu Example", 64 * 6, 64 * 6)
+		//.fullscreen()
 		.position_centered()
 		.resizable()
 		.hidden()
@@ -149,12 +159,7 @@ fn main() -> Result<()> {
 	// font
 	let font_file = std::fs::read_to_string(assets_path.join("font.txt"))?;
 	let font = std::fs::read(assets_path.join(font_file))?;
-	let text_renderer = simple_gpu::create_text_renderer(font, 64, None, &gpu_instance)?;
-	//for i in 64 .. 256 {
-	//	let text_renderer = simple_gpu::create_text_renderer(&font, i, None, &gpu_instance)?;
-	//	println!("{i}: {}", simple_gpu::approximate_char_atlas_quality(&text_renderer.atlas_data, text_renderer.atlas_allocator.size().width as u32));
-	//}
-	//panic!();
+	let text_renderer = simple_gpu::create_text_renderer(font, 64, None, &mut gpu_instance)?;
 
 	// pipeline
 	let pipeline = simple_gpu::create_2d_pipeline(
@@ -309,7 +314,7 @@ fn main() -> Result<()> {
 		}
 
 		// render
-		uniforms_raw_data.update(&data, window.size());
+		uniforms_raw_data.update(&data, window.size(), Color::BLACK, Color::WHITE);
 		simple_gpu::update_uniforms_buffer(
 			&data.uniforms_buffer,
 			&uniforms_raw_data,
@@ -345,7 +350,7 @@ fn main() -> Result<()> {
 				&data.instance_buffer.wgpu_buffer,
 			],
 			Some(&data.index_buffer),
-			&[&data.text_renderer.atlas_bind_group],
+			&[&data.text_renderer.atlas.wgpu_bind_group],
 			data.vertex_buffer.wgpu_buffer_len,
 			data.instance_buffer.wgpu_buffer_len,
 		);

@@ -3,6 +3,8 @@ use anyhow::{Context, Ok, Result, anyhow};
 
 #[cfg(feature = "image")]
 use crate::file_name;
+#[cfg(all(feature = "atlas", feature = "image"))]
+use crate::{start_command_encoder, submit_gpu_commands};
 #[cfg(feature = "image")]
 use std::path::Path;
 #[cfg(all(feature = "atlas", feature = "image"))]
@@ -329,6 +331,16 @@ pub struct AtlasLocation {
 	pub alloc_id: guillotiere::AllocId,
 }
 
+impl Default for AtlasLocation {
+	fn default() -> Self {
+		Self {
+			pos: (0, 0),
+			size: (0, 0),
+			alloc_id: guillotiere::AllocId::deserialize(0),
+		}
+	}
+}
+
 /// A simple wrapper around [`guillotiere::AtlasAllocator`] that ensures all positions are re-expanded to match their actual texture position
 ///
 /// When a texture atlas is created, the allocator for it has its coordinates scaled down by `2 ^ max_mip`. This is to ensure that all positions are automatically aligned to mip boundaries, but it can also create some confusion. To make it more obvious that this is the case (and also for some extra convenience), the allocator is wrapped in this struct along with the max mip level it was created with
@@ -338,6 +350,20 @@ pub struct AtlasAllocator {
 	pub allocator: guillotiere::AtlasAllocator,
 	/// The mip level this allocator uses. The allocator must have a size that is a multiple of `2 ^ map_mip`, and the outputs must be scaled up by `2 ^ max_mip` (which is automatically done with the methods on this struct)
 	pub max_mip: u32,
+}
+
+/// This is the return value of creating a new atlas
+pub struct CreatedAtlasResult<ItemToPlacementMapping> {
+	/// This is the atlas's texture
+	pub tex: Texture,
+	/// This is the raw data that was uploaded to the texture
+	pub tex_data: Vec<u8>,
+	/// This is where each item was allocated within the atlas
+	pub placements: ItemToPlacementMapping,
+	/// This is the allocator used to place everything. More:
+	///
+	/// Important note: this allocator has its coordinates (including width and height) scaled down by `2 ^ (mip_count - 1)` so that the allocated positions are automatically aligned to a mip boundary. This means that if you want to use the allocator yourself, you need to shift the output locations right by `mip_count - 1`
+	pub allocator: AtlasAllocator,
 }
 
 /// Builds an atlas out of many textures
@@ -362,8 +388,8 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	min_size: Option<(u32, u32)>,
-	gpu_instance: &GpuInstance,
-) -> (Texture, Vec<AtlasLocation>, AtlasAllocator) {
+	gpu_instance: &mut GpuInstance,
+) -> CreatedAtlasResult<Vec<AtlasLocation>> {
 	let mut textures = textures
 		.iter()
 		.enumerate()
@@ -389,6 +415,8 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	}
 	let atlas_size = total_allocator_pixels.isqrt() as u32 + 2;
 	let (mut atlas_width, mut atlas_height) = if let Some((min_width, min_height)) = min_size {
+		let min_width = fit_mip(min_width, max_mip) >> max_mip;
+		let min_height = fit_mip(min_height, max_mip) >> max_mip;
 		(atlas_size.max(min_width), atlas_size.max(min_height))
 	} else {
 		(atlas_size, atlas_size)
@@ -404,7 +432,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	];
 	#[allow(clippy::cast_sign_loss, clippy::cast_possible_wrap)]
 	'try_alloc: loop {
-		//println!("trying size {atlas_size}");
+		//println!("trying size ({atlas_width}, {atlas_height})");
 
 		let mut allocator = guillotiere::AtlasAllocator::new(guillotiere::size2(
 			atlas_width as i32,
@@ -435,7 +463,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 
 		let (atlas_width, atlas_height) = (atlas_width << max_mip, atlas_height << max_mip);
 
-		let texture = create_texture(
+		let atlas_tex = create_texture(
 			name,
 			(atlas_width, atlas_height),
 			format,
@@ -461,12 +489,23 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 			);
 		}
 
-		update_texture(&texture, &atlas_tex_data, gpu_instance);
+		update_texture(&atlas_tex, &atlas_tex_data, gpu_instance);
 		//println!("efficiency: {}", total_allocator_pixels as f32 / ((atlas_width >> max_mip) * (atlas_height >> max_mip)) as f32);
+
+		if mip_count > 1 {
+			let mut command_encoder = start_command_encoder("refill_mipmaps", gpu_instance);
+			refill_mipmaps(&atlas_tex, &mut command_encoder, gpu_instance);
+			submit_gpu_commands(command_encoder, gpu_instance);
+		}
 
 		let allocator = AtlasAllocator { allocator, max_mip };
 
-		return (texture, locations, allocator);
+		return CreatedAtlasResult {
+			tex: atlas_tex,
+			tex_data: atlas_tex_data,
+			placements: locations,
+			allocator,
+		};
 	}
 }
 
@@ -600,8 +639,8 @@ pub fn create_texture_atlas_from_path(
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	min_size: Option<(u32, u32)>,
-	gpu_instance: &GpuInstance,
-) -> Result<(Texture, HashMap<PathBuf, AtlasLocation>, AtlasAllocator)> {
+	gpu_instance: &mut GpuInstance,
+) -> Result<CreatedAtlasResult<HashMap<PathBuf, AtlasLocation>>> {
 	let mut textures = vec![];
 	let mut texture_paths = vec![];
 	let mut paths = std::fs::read_dir(path)
@@ -630,7 +669,12 @@ pub fn create_texture_atlas_from_path(
 		texture_paths.push(curr_path);
 	}
 
-	let (atlas_texture, locations, allocator) = create_texture_atlas(
+	let CreatedAtlasResult {
+		tex,
+		tex_data,
+		placements,
+		allocator,
+	} = create_texture_atlas(
 		name,
 		&textures,
 		wgpu::TextureFormat::Rgba8Unorm,
@@ -642,10 +686,15 @@ pub fn create_texture_atlas_from_path(
 
 	let mut mapped_locations = HashMap::new();
 	for (i, path) in texture_paths.into_iter().enumerate() {
-		mapped_locations.insert(path, locations[i]);
+		mapped_locations.insert(path, placements[i]);
 	}
 
-	Ok((atlas_texture, mapped_locations, allocator))
+	Ok(CreatedAtlasResult {
+		tex,
+		tex_data,
+		placements: mapped_locations,
+		allocator,
+	})
 }
 
 

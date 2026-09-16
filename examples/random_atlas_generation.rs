@@ -23,7 +23,7 @@ use sdl3::{
 	libc::rand,
 	mouse::{MouseButton, MouseState},
 };
-use simple_gpu::BufferItemRawData;
+use simple_gpu::{BufferItemRawData, CreatedAtlasResult};
 use std::{
 	path::PathBuf,
 	time::{Duration, Instant},
@@ -133,29 +133,26 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 		atlas_textures.push((width, height, data));
 	}
 	let start = Instant::now();
-	let (mut atlas, _tex_locations, _atlas_allocator) = simple_gpu::create_texture_atlas(
+	let CreatedAtlasResult {
+		tex,
+		tex_data,
+		placements,
+		allocator,
+	} = simple_gpu::create_texture_atlas(
 		"main atlas",
 		&atlas_textures,
 		wgpu::TextureFormat::Rgba8Unorm,
 		wgpu::FilterMode::Nearest,
 		4,
 		None,
-		&gpu_instance,
+		gpu_instance,
 	);
 	println!(
 		"generated new atlas, time taken: {} micros",
 		start.elapsed().as_micros()
 	);
 	let start = Instant::now();
-	let mut command_encoder =
-		simple_gpu::start_command_encoder("generate atlas mipmaps", gpu_instance);
-	simple_gpu::refill_mipmaps(&atlas, &mut command_encoder, gpu_instance);
-	simple_gpu::submit_gpu_commands(command_encoder, gpu_instance);
-	println!(
-		"Updated atlas mipmap levels, time taken: {} micros",
-		start.elapsed().as_micros()
-	);
-	atlas
+	tex
 }
 
 
