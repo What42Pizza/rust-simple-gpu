@@ -15,7 +15,7 @@ layout(set = 1, binding = 1) uniform sampler filtering_sampler;
 #define atlas sampler2D(atlas_tex, filtering_sampler)
 
 float invMix(float low, float high, float v) {
-	return (v - low) /  (high - low);
+	return (v - low) / (high - low);
 }
 
 void main() {
@@ -51,7 +51,7 @@ void main() {
 	float lineYIntercept = invMix(leftSample, rightSample, 0.5) * 2.0 - 1.0;
 	float lineXIntercept = mix(-1.0, 1.0, lineYIntercept);
 	float m = sign(leftSample - rightSample) * 0.15;
-	float b = 0.5 - lineYIntercept * m;
+	float b = 0.5 - lineXIntercept * m;
 	vec3 mixFactors = vec3(
 		invMix(0.0, 0.5, b - m),
 		invMix(0.0, 0.5, b),

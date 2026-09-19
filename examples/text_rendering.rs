@@ -24,6 +24,7 @@ use sdl3::{
 	keyboard::{KeyboardState, Keycode},
 	libc::rand,
 	pixels::{Color, PixelFormat},
+	sys::mouse::SDL_GetMouseState,
 };
 use simple_gpu::BufferItemRawData;
 use std::{path::PathBuf, time::Instant};
@@ -350,7 +351,7 @@ fn main() -> Result<()> {
 				&data.instance_buffer.wgpu_buffer,
 			],
 			Some(&data.index_buffer),
-			&[&data.text_renderer.atlas.wgpu_bind_group],
+			&[&data.text_renderer.atlas_tex.wgpu_bind_group],
 			data.vertex_buffer.wgpu_buffer_len,
 			data.instance_buffer.wgpu_buffer_len,
 		);

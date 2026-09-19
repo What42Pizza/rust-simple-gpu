@@ -134,10 +134,10 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 	}
 	let start = Instant::now();
 	let CreatedAtlasResult {
-		tex,
-		tex_data,
 		placements,
-		allocator,
+		atlas_tex: tex,
+		atlas_tex_data: tex_data,
+		atlas_allocator: allocator,
 	} = simple_gpu::create_texture_atlas(
 		"main atlas",
 		&atlas_textures,

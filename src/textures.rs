@@ -354,16 +354,16 @@ pub struct AtlasAllocator {
 
 /// This is the return value of creating a new atlas
 pub struct CreatedAtlasResult<ItemToPlacementMapping> {
-	/// This is the atlas's texture
-	pub tex: Texture,
-	/// This is the raw data that was uploaded to the texture
-	pub tex_data: Vec<u8>,
 	/// This is where each item was allocated within the atlas
 	pub placements: ItemToPlacementMapping,
+	/// This is the atlas's texture
+	pub atlas_tex: Texture,
+	/// This is the raw data that was uploaded to the texture
+	pub atlas_tex_data: Vec<u8>,
 	/// This is the allocator used to place everything. More:
 	///
 	/// Important note: this allocator has its coordinates (including width and height) scaled down by `2 ^ (mip_count - 1)` so that the allocated positions are automatically aligned to a mip boundary. This means that if you want to use the allocator yourself, you need to shift the output locations right by `mip_count - 1`
-	pub allocator: AtlasAllocator,
+	pub atlas_allocator: AtlasAllocator,
 }
 
 /// Builds an atlas out of many textures
@@ -505,10 +505,10 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 		let allocator = AtlasAllocator { allocator, max_mip };
 
 		return CreatedAtlasResult {
-			tex: atlas_tex,
-			tex_data: atlas_tex_data,
 			placements: locations,
-			allocator,
+			atlas_tex,
+			atlas_tex_data,
+			atlas_allocator: allocator,
 		};
 	}
 }
@@ -675,10 +675,10 @@ pub fn create_texture_atlas_from_path(
 	}
 
 	let CreatedAtlasResult {
-		tex,
-		tex_data,
 		placements,
-		allocator,
+		atlas_tex,
+		atlas_tex_data,
+		atlas_allocator,
 	} = create_texture_atlas(
 		name,
 		&textures,
@@ -690,16 +690,16 @@ pub fn create_texture_atlas_from_path(
 		gpu_instance,
 	);
 
-	let mut mapped_locations = HashMap::new();
+	let mut mapped_placements = HashMap::new();
 	for (i, path) in texture_paths.into_iter().enumerate() {
-		mapped_locations.insert(path, placements[i]);
+		mapped_placements.insert(path, placements[i]);
 	}
 
 	Ok(CreatedAtlasResult {
-		tex,
-		tex_data,
-		placements: mapped_locations,
-		allocator,
+		placements: mapped_placements,
+		atlas_tex,
+		atlas_tex_data,
+		atlas_allocator,
 	})
 }
 

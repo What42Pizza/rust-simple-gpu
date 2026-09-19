@@ -19,9 +19,9 @@ pub struct TextRenderer {
 	/// This is the size at which font is rendered for storage within the character atlas
 	pub rasterize_size: u32,
 	/// The atlas for character textures
-	pub atlas: Texture,
+	pub atlas_tex: Texture,
 	/// The raw data for the atlas texture
-	pub atlas_data: Vec<u8>,
+	pub atlas_tex_data: Vec<u8>,
 	/// This is the allocator used for placing characters into the atlas
 	pub atlas_allocator: AtlasAllocator,
 	/// Stores the atlas location, glyph placement, and rasterized sdf (signed distance field)
@@ -76,7 +76,7 @@ pub fn create_text_renderer(
 		let data = generate_sdf(
 			&bitmap.data,
 			bitmap.placement.width,
-			0.3 / rasterize_size as f32,
+			1.75 / rasterize_size as f32,
 		);
 		bitmap.placement.width = (bitmap.placement.width) / 3 + 4;
 		bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
@@ -87,10 +87,10 @@ pub fn create_text_renderer(
 	}
 
 	let CreatedAtlasResult {
-		tex,
-		tex_data,
 		placements,
-		allocator,
+		atlas_tex,
+		atlas_tex_data,
+		atlas_allocator,
 	} = create_texture_atlas(
 		"character_atlas",
 		&char_textures,
@@ -114,9 +114,9 @@ pub fn create_text_renderer(
 	Ok(TextRenderer {
 		font_data,
 		rasterize_size,
-		atlas: tex,
-		atlas_data: tex_data,
-		atlas_allocator: allocator,
+		atlas_tex,
+		atlas_tex_data,
+		atlas_allocator,
 		char_datas,
 	})
 }
