@@ -114,11 +114,7 @@ pub fn create_text_renderer(
 			.format(Format::Alpha)
 			.render(&mut font_scaler, glyph_id)
 			.expect("Failed to render glyph for character");
-		let data = generate_sdf(
-			&bitmap.data,
-			bitmap.placement.width,
-			1.75 / rasterize_size as f32,
-		);
+		let data = generate_sdf(&bitmap.data, bitmap.placement.width, 0.03);
 		bitmap.placement.width = (bitmap.placement.width) / 3 + 4;
 		bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
 		bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
@@ -142,7 +138,7 @@ pub fn create_text_renderer(
 		&char_textures,
 		wgpu::TextureFormat::R8Unorm,
 		wgpu::FilterMode::Linear,
-		1,
+		3,
 		255,
 		Some((atlas_size, atlas_size)),
 		gpu_instance,

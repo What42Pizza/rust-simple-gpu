@@ -16,7 +16,6 @@ layout(set = 1, binding = 1) uniform sampler filtering_sampler;
 #define atlas sampler2D(atlas_tex, filtering_sampler)
 
 float invMix(float low, float high, float v) {
-	//if (abs(low - high) < 0.000001) return 0.5;
 	return (v - low) / (high - low);
 }
 
@@ -41,65 +40,49 @@ void main() {
 		(backgroundColorPacked & 0xFF000000) >> 24
 	) / 255.0;
 	
-	// holds pos.x, pos.y, sample
-	vec3 sampleA = vec3(0.0, 0.4, 0.0);
-	vec3 sampleB = vec3(-0.5, 0.2, 0.0);
-	vec3 sampleC = vec3(0.5, 0.2, 0.0);
+	ivec2 sample_LL_Pos = ivec2(0, 0);
+	ivec2 sample_HL_Pos = ivec2(1, 0);
+	ivec2 sample_LH_Pos = ivec2(0, 1);
 	
-	vec2 invTargetSize = 1.0 / targetSize;
-	sampleA.z = texture(atlas, texcoord + sampleA.xy * invTargetSize).r;
-	sampleB.z = texture(atlas, texcoord + sampleB.xy * invTargetSize).r;
-	sampleC.z = texture(atlas, texcoord + sampleC.xy * invTargetSize).r;
+	vec2 texelCoordFloat = texcoord * textureSize(atlas, 0);
+	ivec2 texelCoord = ivec2(texelCoordFloat);
+	float sample_LL = texelFetch(atlas, texelCoord + sample_LL_Pos, 0).r;
+	float sample_HL = texelFetch(atlas, texelCoord + sample_HL_Pos, 0).r;
+	float sample_LH = texelFetch(atlas, texelCoord + sample_LH_Pos, 0).r;
+	const float MAX_STEP = 24.0 / 255.0;
+	sample_HL = clamp(sample_HL, sample_LL - MAX_STEP, sample_LL + MAX_STEP);
+	sample_LH = clamp(sample_LH, sample_LL - MAX_STEP, sample_LL + MAX_STEP);
+	
+	vec3 sampleA = vec3((sample_LL_Pos - fract(texelCoordFloat) + 0.5) / textureSize(atlas, 0) * targetSize, sample_LL);
+	vec3 sampleB = vec3((sample_HL_Pos - fract(texelCoordFloat) + 0.5) / textureSize(atlas, 0) * targetSize, sample_HL);
+	vec3 sampleC = vec3((sample_LH_Pos - fract(texelCoordFloat) + 0.5) / textureSize(atlas, 0) * targetSize, sample_LH);
 	
 	float diffAB = abs(sampleA.z - sampleB.z);
 	float diffBC = abs(sampleB.z - sampleC.z);
-	float diffCA = abs(sampleC.z - sampleA.z);
+	float diffAC = abs(sampleA.z - sampleC.z);
 	
 	vec3 centerPos = sampleC, offset1 = sampleA, offset2 = sampleB;
-	if (diffBC < diffAB && diffBC < diffCA) {
+	if (diffBC < diffAB && diffBC < diffAC) {
 		centerPos = sampleA;
 		offset1 = sampleB;
 		offset2 = sampleC;
 	}
-	if (diffCA < diffAB && diffCA < diffBC) {
+	if (diffAC < diffAB && diffAC < diffBC) {
 		centerPos = sampleB;
 		offset1 = sampleA;
 		offset2 = sampleC;
 	}
-	vec2 linePoint1 = mix(offset1.xy, centerPos.xy, invMix(offset1.z, centerPos.z, 0.49));
-	vec2 linePoint2 = mix(offset2.xy, centerPos.xy, invMix(offset2.z, centerPos.z, 0.49));
+	vec2 linePoint1 = mix(offset1.xy, centerPos.xy, invMix(offset1.z, centerPos.z, 0.5));
+	vec2 linePoint2 = mix(offset2.xy, centerPos.xy, invMix(offset2.z, centerPos.z, 0.5));
 	
 	vec3 mixFactors = vec3(
 		1.0 - 0.75 * distToLine(linePoint1, linePoint2, vec2(-0.25, 0.0)),
-		1.0 - 0.75 * distToLine(linePoint1, linePoint2, vec2(0.0, 0.0)),
-		1.0 - 0.75 * distToLine(linePoint1, linePoint2, vec2(0.25, 0.0))
+		1.0 - 0.75 * distToLine(linePoint1, linePoint2, vec2( 0.0 , 0.0)),
+		1.0 - 0.75 * distToLine(linePoint1, linePoint2, vec2( 0.25, 0.0))
 	);
-	if (texture(atlas, texcoord).r < 0.5) {
+	if (sample_LL < 0.5) {
 		mixFactors = vec3(1.0);
 	}
-	
-	
-	
-	//float leftSample = texture(atlas, leftPos).r;
-	//float rightSample = texture(atlas, rightPos).r;
-	//if (leftSample < 0.5 && rightSample < 0.5) {
-	//	frag_color = foregroundColor;
-	//	return;
-	//}
-	//if (leftSample > 0.5 && rightSample > 0.5) {
-	//	discard;
-	//	return;
-	//}
-	
-	//float lineYIntercept = invMix(leftSample, rightSample, 0.5) * 2.0 - 1.0;
-	//float lineXIntercept = mix(-1.0, 1.0, lineYIntercept);
-	//float m = sign(leftSample - rightSample) * 0.15;
-	//float b = 0.5 - lineXIntercept * m;
-	//vec3 mixFactors = vec3(
-	//	invMix(0.0, 0.5, b - m),
-	//	invMix(0.0, 0.5, b),
-	//	invMix(0.0, 0.5, b + m)
-	//);
 	
 	frag_color = vec4(
 		mix(backgroundColor.r, foregroundColor.r, clamp(mixFactors.r, 0.0, 1.0)),
@@ -109,7 +92,7 @@ void main() {
 	);
 	
 	if (gl_FragCoord.x > mousePos.x) {
-		frag_color = texture(atlas, texcoord);
+		frag_color = texelFetch(atlas, texelCoord, 0);
 	}
 	
 }
