@@ -156,6 +156,8 @@ pub trait BufferItemRawData: bytemuck::Pod {
 ///
 /// The first token needs to be either `Vertex` or `Instance`, which directly corresponds to [`wgpu::VertexStepMode`]. After that, you define the struct, where each field has a name, type, shader location, and shader format.
 ///
+/// Note: the shader format needs to be a value of [`wgpu::VertexFormat`].
+///
 /// Example:
 ///
 /// ```
@@ -206,6 +208,7 @@ macro_rules! make_vertex_buffer_type {
 	($step_mode:ident, struct $struct_name:ident { $( $field_name:ident : $field_type:ty as location $field_loc:tt : $field_data:ident , )+ }) => {
 		#[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 		#[repr(C)]
+		#[allow(missing_docs, clippy::derive_partial_eq_without_eq)]
 		pub struct $struct_name {
 			$(
 				pub $field_name: $field_type,

@@ -1,13 +1,13 @@
 use crate::{
-	AtlasAllocator, AtlasLocation, CreatedAtlasResult, GpuInstance, Texture, create_texture_atlas,
-	get_gpu_limits,
+	AtlasAllocator, AtlasLocation, CreatedAtlasResult, GpuInstance, Texture, VertexBuffer,
+	create_texture_atlas, create_vertex_buffer, get_gpu_limits, make_vertex_buffer_type,
 };
-use anyhow::Result;
-use std::collections::HashMap;
+use anyhow::{Result, bail};
+use std::{array::from_fn, collections::HashMap};
 use swash::{
 	CacheKey, FontRef,
 	scale::{Render, ScaleContext, Source, StrikeWith},
-	zeno::{Format, Placement},
+	zeno::Format,
 };
 
 
@@ -18,14 +18,55 @@ pub struct TextRenderer {
 	pub font_data: Vec<u8>,
 	/// This is the size at which font is rendered for storage within the character atlas
 	pub rasterize_size: u32,
+
 	/// The atlas for character textures
 	pub atlas_tex: Texture,
 	/// The raw data for the atlas texture
 	pub atlas_tex_data: Vec<u8>,
 	/// This is the allocator used for placing characters into the atlas
 	pub atlas_allocator: AtlasAllocator,
-	/// Stores the atlas location, glyph placement, and rasterized sdf (signed distance field)
-	pub char_datas: HashMap<char, (AtlasLocation, Placement, Vec<u8>)>,
+
+	/// Stores the atlas location, glyph placement, and rasterized sdf (signed distance field) for ascii characters
+	pub ascii_chars: [CharRenderData; (b'~' - b'!' + 1) as usize],
+	/// Stores the atlas location, glyph placement, and rasterized sdf (signed distance field) for non-ascii characters
+	pub non_asci_chars: HashMap<char, CharRenderData>,
+
+	/// Holds all the characters that will be rendered
+	pub instances_buffer: VertexBuffer<CharInstanceData>,
+	/// Holds the wgpu buffer for per-string data
+	pub string_datas_buffer: wgpu::Buffer,
+	/// The current capacity of `Self::string_datas_buffer`
+	pub string_datas_buffer_cap: u32,
+	/// The current cpu-side copy of `Self::string_datas_buffer`
+	pub string_datas_buffer_vec: Vec<StringData>,
+	/// Holds the locations of each value of [`StringData`] so that strings that use the same rendering settings can share the same string data instance
+	pub string_data_locations: HashMap<StringData, u32>,
+}
+
+/// Contains the data needed to render a character
+pub struct CharRenderData {
+	/// This is the location of the character's sdf texture within the text renderer's texture atlas
+	pub atlas_location: AtlasLocation,
+	/// Defines the placement of the glyph within the sdf texture
+	pub glyph_offset: (u32, u32),
+	/// This is the raw data of the character's sdf texture, used if the character atlas needs to be recreated
+	pub sdf_tex_data: Vec<u8>,
+}
+
+make_vertex_buffer_type!(Instance, struct CharInstanceData {
+	screen_coords: [u16; 4] as location 0: Uint16x4,
+	tex_coords: [u16; 4]    as location 1: Uint16x4,
+	string_id: u32          as location 2: Uint32,
+});
+
+/// Holds the per-string data to render
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct StringData {
+	/// Holds the color
+	pub color: [u8; 4],
+	/// Holds the background color, used for subpixel rendering. Note: the fourth component is a bool that indicates if this uses subpixel rendering
+	pub background_color: [u8; 4],
 }
 
 
@@ -65,9 +106,9 @@ pub fn create_text_renderer(
 	let max_atlas_size = max_atlas_size.unwrap_or(rasterize_size * 6);
 	let atlas_size = atlas_size.min(max_atlas_size);
 
-	let mut char_datas = HashMap::new();
 	let mut char_textures = vec![];
-	for c in '!'..='~' {
+	let mut ascii_chars = from_fn(|i| {
+		let c = (i as u8 + b'!') as char;
 		let glyph_id = font_ref.charmap().map(c);
 		let mut bitmap = Render::new(&[Source::Outline, Source::Bitmap(StrikeWith::BestFit)])
 			.format(Format::Alpha)
@@ -82,9 +123,14 @@ pub fn create_text_renderer(
 		bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
 		bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
 		bitmap.placement.top = (bitmap.placement.top + 1) / 3 + 2;
-		char_datas.insert(c, (AtlasLocation::default(), bitmap.placement, vec![]));
 		char_textures.push((bitmap.placement.width, bitmap.placement.height, data));
-	}
+		let glyph_offset = (bitmap.placement.left as u32, bitmap.placement.top as u32);
+		CharRenderData {
+			atlas_location: AtlasLocation::default(),
+			glyph_offset,
+			sdf_tex_data: vec![],
+		}
+	});
 
 	let CreatedAtlasResult {
 		placements,
@@ -101,24 +147,79 @@ pub fn create_text_renderer(
 		Some((atlas_size, atlas_size)),
 		gpu_instance,
 	);
+	if atlas_tex.wgpu_texture.width() > 65535 {
+		bail!(
+			"The character atlas cannot be any larger than 65535 (in width or height) but the width is {}, please use a smaller rasterize size.",
+			atlas_tex.wgpu_texture.width()
+		);
+	}
+	if atlas_tex.wgpu_texture.height() > 65535 {
+		bail!(
+			"The character atlas cannot be any larger than 65535 (in width or height) but the height is {}, please use a smaller rasterize size.",
+			atlas_tex.wgpu_texture.height()
+		);
+	}
 
 	for (i, (_w, _h, data)) in char_textures.into_iter().enumerate() {
-		let c = (i as u8 + b'!') as char;
-		let char_data = char_datas
-			.get_mut(&c)
-			.expect("The character data should have been already inserted");
-		char_data.0 = placements[i];
-		char_data.2 = data;
+		ascii_chars[i].atlas_location = placements[i];
+		ascii_chars[i].sdf_tex_data = data;
 	}
+
+	let string_datas_buffer_cap = 256;
+	let string_datas_buffer = gpu_instance
+		.wgpu_device
+		.create_buffer(&wgpu::BufferDescriptor {
+			label: Some("string_datas_buffer"),
+			size: u64::from(string_datas_buffer_cap) * std::mem::size_of::<StringData>() as u64,
+			usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::STORAGE,
+			mapped_at_creation: false,
+		});
 
 	Ok(TextRenderer {
 		font_data,
 		rasterize_size,
+
 		atlas_tex,
 		atlas_tex_data,
 		atlas_allocator,
-		char_datas,
+
+		ascii_chars,
+		non_asci_chars: HashMap::new(),
+
+		instances_buffer: create_vertex_buffer("text_instances_buffer", 1024, gpu_instance),
+		string_datas_buffer,
+		string_datas_buffer_cap,
+		string_datas_buffer_vec: vec![],
+		string_data_locations: HashMap::new(),
 	})
+}
+
+
+
+/// Processes text to be rendered and queues it for rendering
+#[allow(unused)]
+pub fn render_text(
+	text: &str,
+	pos: (u32, u32),
+	size: u32,
+	color: wgpu::Color,
+	text_renderer: &mut TextRenderer,
+) {
+	let string_data = StringData {
+		color: [
+			(color.r * 255.0) as u8,
+			(color.g * 255.0) as u8,
+			(color.b * 255.0) as u8,
+			(color.a * 255.0) as u8,
+		],
+		background_color: [0; 4],
+	};
+	let string_data_id = text_renderer.string_data_locations.entry(string_data);
+	let string_data_id = *string_data_id.or_insert_with(|| {
+		let id = text_renderer.string_datas_buffer_vec.len();
+		text_renderer.string_datas_buffer_vec.push(string_data);
+		id as u32
+	});
 }
 
 

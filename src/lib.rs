@@ -68,8 +68,8 @@ pub use textures::*;
 pub mod data_buffers;
 pub use data_buffers::*;
 /// Utilities for creating pipelines
-pub mod pipelines;
-pub use pipelines::*;
+pub mod rendering;
+pub use rendering::*;
 /// Utilities for loading shaders
 pub mod shaders;
 pub use shaders::*;

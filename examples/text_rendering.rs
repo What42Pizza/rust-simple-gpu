@@ -37,6 +37,7 @@ struct UniformsRawData {
 	target_size: [u32; 2],
 	text_color: u32,
 	background_color: u32,
+	mouse_pos: [u32; 2],
 }
 
 impl UniformsRawData {
@@ -46,10 +47,12 @@ impl UniformsRawData {
 		screen_size: (u32, u32),
 		text_color: Color,
 		background_color: Color,
+		mouse_pos: (u32, u32),
 	) {
 		self.target_size = [screen_size.0, screen_size.1];
 		self.text_color = text_color.to_u32(&PixelFormat::RGBA32);
 		self.background_color = background_color.to_u32(&PixelFormat::RGBA32);
+		self.mouse_pos = [mouse_pos.0, mouse_pos.1];
 	}
 }
 
@@ -278,7 +281,7 @@ fn main() -> Result<()> {
 					keycode: Some(Keycode::Escape),
 					..
 				} => {
-					println!("closing");
+					println!("closing"); // note: this can get both a quit event and a close requested event in the same frame
 					data.should_quit = true;
 				}
 				e => {
@@ -315,7 +318,17 @@ fn main() -> Result<()> {
 		}
 
 		// render
-		uniforms_raw_data.update(&data, window.size(), Color::BLACK, Color::WHITE);
+		let (mut mouse_x, mut mouse_y) = (0.0, 0.0);
+		unsafe {
+			SDL_GetMouseState(&mut mouse_x, &mut mouse_y);
+		}
+		uniforms_raw_data.update(
+			&data,
+			window.size(),
+			Color::BLACK,
+			Color::WHITE,
+			(mouse_x as u32, mouse_y as u32),
+		);
 		simple_gpu::update_uniforms_buffer(
 			&data.uniforms_buffer,
 			&uniforms_raw_data,

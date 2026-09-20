@@ -339,7 +339,7 @@ fn main() -> Result<()> {
 					keycode: Some(Keycode::Escape),
 					..
 				} => {
-					println!("closing");
+					println!("closing"); // note: this can get both a quit event and a close requested event in the same frame
 					data.should_quit = true;
 				}
 				Event::MouseButtonDown {
