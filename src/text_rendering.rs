@@ -26,9 +26,9 @@ pub struct TextRenderer {
 	/// This is the allocator used for placing characters into the atlas
 	pub atlas_allocator: AtlasAllocator,
 
-	/// Stores the atlas location, glyph placement, and rasterized sdf (signed distance field) for ascii characters
+	/// Stores the atlas location, glyph placement, and rasterized vdf (vector distance field) for ascii characters
 	pub ascii_chars: [CharRenderData; (b'~' - b'!' + 1) as usize],
-	/// Stores the atlas location, glyph placement, and rasterized sdf (signed distance field) for non-ascii characters
+	/// Stores the atlas location, glyph placement, and rasterized vdf (vector distance field) for non-ascii characters
 	pub non_asci_chars: HashMap<char, CharRenderData>,
 
 	/// Holds all the characters that will be rendered
@@ -45,12 +45,12 @@ pub struct TextRenderer {
 
 /// Contains the data needed to render a character
 pub struct CharRenderData {
-	/// This is the location of the character's sdf texture within the text renderer's texture atlas
+	/// This is the location of the character's vdf texture within the text renderer's texture atlas
 	pub atlas_location: AtlasLocation,
-	/// Defines the placement of the glyph within the sdf texture
+	/// Defines the placement of the glyph within the vdf texture
 	pub glyph_offset: (u32, u32),
-	/// This is the raw data of the character's sdf texture, used if the character atlas needs to be recreated
-	pub sdf_tex_data: Vec<u8>,
+	/// This is the raw data of the character's vdf texture, used if the character atlas needs to be recreated
+	pub vdf_tex_data: Vec<u8>,
 }
 
 make_vertex_buffer_type!(Instance, struct CharInstanceData {
@@ -114,7 +114,7 @@ pub fn create_text_renderer(
 			.format(Format::Alpha)
 			.render(&mut font_scaler, glyph_id)
 			.expect("Failed to render glyph for character");
-		let data = generate_sdf(&bitmap.data, bitmap.placement.width, 0.03);
+		let data = generate_vdf(&bitmap.data, bitmap.placement.width);
 		bitmap.placement.width = (bitmap.placement.width) / 3 + 4;
 		bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
 		bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
@@ -124,7 +124,7 @@ pub fn create_text_renderer(
 		CharRenderData {
 			atlas_location: AtlasLocation::default(),
 			glyph_offset,
-			sdf_tex_data: vec![],
+			vdf_tex_data: vec![],
 		}
 	});
 
@@ -136,10 +136,10 @@ pub fn create_text_renderer(
 	} = create_texture_atlas(
 		"character_atlas",
 		&char_textures,
-		wgpu::TextureFormat::R8Unorm,
+		wgpu::TextureFormat::Rg8Unorm,
 		wgpu::FilterMode::Linear,
 		3,
-		255,
+		0,
 		Some((atlas_size, atlas_size)),
 		gpu_instance,
 	);
@@ -158,7 +158,7 @@ pub fn create_text_renderer(
 
 	for (i, (_w, _h, data)) in char_textures.into_iter().enumerate() {
 		ascii_chars[i].atlas_location = placements[i];
-		ascii_chars[i].sdf_tex_data = data;
+		ascii_chars[i].vdf_tex_data = data;
 	}
 
 	let string_datas_buffer_cap = 256;
@@ -220,17 +220,19 @@ pub fn render_text(
 
 
 
-/// Generates an sdf texture from an alpha texture. More:
+/// Generates an vdf (vector distance field) texture from an alpha texture. More:
 ///
 /// - The input is expected to be 3 times larger than the output in both dimensions
 /// - The input is `R8Unorm`, where 0 is fully transparent and 1 is fully opaque
-/// - The output is `R8Unorm`, where 0.5 is at the glyph edge, 0-0.5 is inside, and 0.5-1.0 is outside
+/// - The output is `Rg8Unorm`, which stores the vector from the pixel to the nearest glyph edge
+///   -
+///   - is (127, 127) if the pixel is inside the glyph
 #[must_use]
-pub fn generate_sdf(input: &[u8], input_width: u32, dist_scale: f32) -> Vec<u8> {
+pub fn generate_vdf(input: &[u8], input_width: u32) -> Vec<u8> {
 	let input_height = input.len() as u32 / input_width;
 	let output_width = input_width / 3 + 4;
 	let output_height = input_height / 3 + 4;
-	let mut output = vec![255; (output_width * output_height) as usize];
+	let mut output = vec![0; (output_width * output_height) as usize * 2];
 
 	let mut edge_points = vec![];
 	for (i, v) in input.iter().copied().enumerate() {
@@ -255,25 +257,33 @@ pub fn generate_sdf(input: &[u8], input_width: u32, dist_scale: f32) -> Vec<u8> 
 		}
 	}
 
-	for x in 1..output_width - 1 {
-		for y in 1..output_height - 1 {
-			let (x_2, y_2) = (x as i32 * 3 - 5, y as i32 * 3 - 5);
+	for x in 0..output_width {
+		for y in 0..output_height {
+			let (x_2, y_2) = ((x as i32 - 2) * 3 + 2, (y as i32 - 2) * 3 + 2);
 			let mut closest_dist_squared = i32::MAX;
+			let mut x_closest_diff = 0;
+			let mut y_closest_diff = 0;
 			for edge_point in &edge_points {
-				let x_dist = edge_point.0 - x_2;
-				let y_dist = edge_point.1 - y_2;
-				let dist_squared = x_dist * x_dist + y_dist * y_dist;
-				closest_dist_squared = closest_dist_squared.min(dist_squared);
-			}
-			let mut dist = (closest_dist_squared as f32).sqrt();
-			if x != 1 && y != 1 && x != output_width - 2 && y != output_height - 2 {
-				let is_positive = input[x_2 as usize + y_2 as usize * input_width as usize] < 127;
-				if !is_positive {
-					dist *= -1.0;
+				let x_diff = edge_point.0 - x_2;
+				let y_diff = edge_point.1 - y_2;
+				let dist_squared = x_diff * x_diff + y_diff * y_diff;
+				if dist_squared < closest_dist_squared {
+					closest_dist_squared = dist_squared;
+					x_closest_diff = x_diff;
+					y_closest_diff = y_diff;
 				}
 			}
-			let unorm_value = (dist.mul_add(dist_scale, 0.5).clamp(0.0, 1.0) * 255.0) as u8;
-			output[x as usize + y as usize * output_width as usize] = unorm_value;
+			if x > 1 && y > 1 && x < output_width - 2 && y < output_height - 2 {
+				let is_in_glyph = input[x_2 as usize + y_2 as usize * input_width as usize] >= 127;
+				if is_in_glyph {
+					x_closest_diff = 0;
+					y_closest_diff = 0;
+				}
+			}
+			let x_diff_unorm = (x_closest_diff + 128) as u8;
+			output[(x as usize + y as usize * output_width as usize) * 2] = x_diff_unorm;
+			let y_diff_unorm = (y_closest_diff + 128) as u8;
+			output[(x as usize + y as usize * output_width as usize) * 2 + 1] = y_diff_unorm;
 		}
 	}
 

@@ -120,7 +120,8 @@ fn main() -> Result<()> {
 	let sdl = sdl3::init()?;
 	let video = sdl.video()?;
 	let mut window = video
-		.window("Simple Gpu Example", 64 * 6, 64 * 6)
+		//.window("Simple Gpu Example", 64 * 6, 64 * 6)
+		.window("Simple Gpu Example", 80, 80)
 		//.fullscreen()
 		.position_centered()
 		.resizable()

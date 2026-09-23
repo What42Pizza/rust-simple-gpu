@@ -49,6 +49,13 @@ pub fn create_texture(
 ) -> Texture {
 	let name = name.into();
 
+	let usages = (wgpu::TextureUsages::TEXTURE_BINDING
+		| wgpu::TextureUsages::COPY_DST
+		| wgpu::TextureUsages::RENDER_ATTACHMENT)
+		& format
+			.guaranteed_format_features(gpu_instance.wgpu_device.features())
+			.allowed_usages;
+
 	let texture = gpu_instance
 		.wgpu_device
 		.create_texture(&wgpu::TextureDescriptor {
@@ -62,9 +69,7 @@ pub fn create_texture(
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
 			format,
-			usage: wgpu::TextureUsages::TEXTURE_BINDING
-				| wgpu::TextureUsages::COPY_DST
-				| wgpu::TextureUsages::RENDER_ATTACHMENT,
+			usage: usages,
 			view_formats: &[],
 		});
 

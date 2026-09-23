@@ -9,6 +9,7 @@
 	clippy::cast_sign_loss,
 	clippy::cast_possible_wrap
 )]
+#![feature(impl_trait_in_bindings)]
 
 //! # Simple Gpu
 //!
