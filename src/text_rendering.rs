@@ -1,6 +1,6 @@
 use crate::{
-	AtlasAllocator, AtlasLocation, CreatedAtlasResult, GpuInstance, Texture, VertexBuffer,
-	create_texture_atlas, create_vertex_buffer, get_gpu_limits, make_vertex_buffer_type,
+	AtlasAllocator, AtlasLocation, CreatedAtlasResult, GpuBuffer, GpuInstance, Texture,
+	create_buffer, create_texture_atlas, get_gpu_limits, vertex_buffer_item_type,
 };
 use anyhow::{Result, bail};
 use std::{array::from_fn, collections::HashMap};
@@ -32,7 +32,7 @@ pub struct TextRenderer {
 	pub non_asci_chars: HashMap<char, CharRenderData>,
 
 	/// Holds all the characters that will be rendered
-	pub instances_buffer: VertexBuffer<CharInstanceData>,
+	pub char_instances_buffer: GpuBuffer<CharInstanceData>,
 	/// Holds the wgpu buffer for per-string data
 	pub string_datas_buffer: wgpu::Buffer,
 	/// The current capacity of `Self::string_datas_buffer`
@@ -53,7 +53,7 @@ pub struct CharRenderData {
 	pub vdf_tex_data: Vec<u8>,
 }
 
-make_vertex_buffer_type!(Instance, struct CharInstanceData {
+vertex_buffer_item_type!(Instance, struct CharInstanceData {
 	screen_coords: [u16; 4] as location 0: Uint16x4,
 	tex_coords: [u16; 4]    as location 1: Uint16x4,
 	string_id: u32          as location 2: Uint32,
@@ -182,7 +182,12 @@ pub fn create_text_renderer(
 		ascii_chars,
 		non_asci_chars: HashMap::new(),
 
-		instances_buffer: create_vertex_buffer("text_instances_buffer", 1024, gpu_instance),
+		char_instances_buffer: create_buffer(
+			"text_instances_buffer",
+			1024,
+			wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+			gpu_instance,
+		),
 		string_datas_buffer,
 		string_datas_buffer_cap,
 		string_datas_buffer_vec: vec![],

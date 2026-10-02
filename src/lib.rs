@@ -34,10 +34,10 @@
 //!   - [`create_2d_pipeline`]
 //!   - [`create_3d_pipeline`]
 //! - Create a vertex buffer with:
-//!   - [`init_vertex_buffer`]
-//!   - [`create_vertex_buffer()`], add data, then [`sync_vertex_buffer()`]
-//! - Create an index buffer (optional) with [`create_index_buffer`]
-//! - Create an instance buffer (optional), uses the same functions as vertex buffers
+//!   - [`init_buffer`]
+//!   - [`create_buffer()`], add data, then [`sync_buffer()`]
+//! - Create an index buffer (optional, uses the same `_buffer()` functions)
+//! - Create an instance buffer (optional, uses the same `_buffer()` functions)
 //! - To start rendering a frame, get the window surface's texture and a command encoder with one of:
 //!   - [`start_frame()`]
 //!   - [`get_surface_texture()`] and [`start_command_encoder`]

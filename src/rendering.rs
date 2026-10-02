@@ -1,4 +1,4 @@
-use crate::{GpuInstance, IndexBuffer};
+use crate::{GpuBuffer, GpuInstance};
 
 
 
@@ -269,7 +269,7 @@ pub fn render(
 	render_pass: &mut wgpu::RenderPass,
 	pipeline: &wgpu::RenderPipeline,
 	vertex_buffers: &[&wgpu::Buffer],
-	index_buffer: Option<&IndexBuffer>,
+	index_buffer: Option<&GpuBuffer<u16>>,
 	textures: &[&wgpu::BindGroup],
 	vertex_count: u32,
 	instance_count: u32,
@@ -287,7 +287,7 @@ pub fn render(
 			index_buffer.wgpu_buffer.slice(..),
 			wgpu::IndexFormat::Uint16,
 		);
-		render_pass.draw_indexed(0..index_buffer.count, 0, 0..instance_count);
+		render_pass.draw_indexed(0..index_buffer.wgpu_buffer_len, 0, 0..instance_count);
 	} else {
 		render_pass.draw(0..vertex_count, 0..instance_count);
 	}

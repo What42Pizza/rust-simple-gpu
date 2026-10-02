@@ -8,63 +8,70 @@ use std::{
 
 /// Holds the data for the vertices of a mesh, or the instances of mesh
 ///
-/// Note: this can be automatically dereferenced to its `cpu_buffer` field
-pub struct VertexBuffer<VertexRawData: BufferItemRawData> {
+/// Notes:
+/// - This can be automatically dereferenced to its `cpu_buffer` field
+/// - For vertex and instance buffers, consider using [`crate::vertex_buffer_item_type`] for creating the item type
+pub struct GpuBuffer<ItemRawData: bytemuck::Pod> {
+	/// Holds the name of the buffer, only used when reallocating the wgpu buffer
+	pub name: String,
 	/// Holds a cpu-side copy of the vertex buffer's data
-	pub cpu_buffer: Vec<VertexRawData>,
+	pub cpu_copy: Vec<ItemRawData>,
 	/// A handle to the gpu buffer
 	pub wgpu_buffer: wgpu::Buffer,
 	/// The number of items currently stored in the gpu buffer
 	pub wgpu_buffer_len: u32,
-	/// The maximum number of items the gpu buffer can hold. The actual byte size of the buffer is `wgpu_buffer_capacity * size_of::<VertexRawData>()`
+	/// The maximum number of items the gpu buffer can hold. The actual byte size of the buffer is `wgpu_buffer_capacity * size_of::<ItemRawData>()`
 	pub wgpu_buffer_capacity: u32,
-	/// Holds the name of the buffer, only used when reallocating the wgpu buffer
-	pub name: String,
+	/// Lists the usages that this buffer was created with
+	pub wgpu_usages: wgpu::BufferUsages,
 }
 
-impl<VertexRawData: BufferItemRawData> Deref for VertexBuffer<VertexRawData> {
-	type Target = Vec<VertexRawData>;
+impl<ItemRawData: bytemuck::Pod> Deref for GpuBuffer<ItemRawData> {
+	type Target = Vec<ItemRawData>;
 	fn deref(&self) -> &Self::Target {
-		&self.cpu_buffer
+		&self.cpu_copy
 	}
 }
 
-impl<VertexRawData: BufferItemRawData> DerefMut for VertexBuffer<VertexRawData> {
+impl<ItemRawData: bytemuck::Pod> DerefMut for GpuBuffer<ItemRawData> {
 	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.cpu_buffer
+		&mut self.cpu_copy
 	}
 }
 
-/// Creates a new vertex buffer (which can also be used for instance datas). Note: the byte size of the resulting wgpu buffer is `count * size_of::<VertexRawData>()`
-pub fn create_vertex_buffer<VertexRawData: BufferItemRawData>(
+/// Creates a new vertex buffer (which can also be used for instance datas). Note: the byte size of the resulting wgpu buffer is `count * size_of::<ItemRawData>()`
+pub fn create_buffer<ItemRawData: bytemuck::Pod>(
 	name: impl Into<String>,
 	wgpu_buffer_capacity: u32,
+	usages: wgpu::BufferUsages,
 	gpu_instance: &GpuInstance,
-) -> VertexBuffer<VertexRawData> {
+) -> GpuBuffer<ItemRawData> {
 	let name = name.into();
 	let buffer = gpu_instance
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&name),
-			size: u64::from(wgpu_buffer_capacity) * std::mem::size_of::<VertexRawData>() as u64,
-			usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+			size: u64::from(wgpu_buffer_capacity) * std::mem::size_of::<ItemRawData>() as u64,
+			usage: usages,
 			mapped_at_creation: false,
 		});
-	VertexBuffer {
-		cpu_buffer: vec![],
+	GpuBuffer {
+		name,
+		cpu_copy: vec![],
 		wgpu_buffer: buffer,
 		wgpu_buffer_len: 0,
 		wgpu_buffer_capacity,
-		name,
+		wgpu_usages: usages,
 	}
 }
 
-/// Similar to [`create_vertex_buffer()`], but also initializes the buffer with values
-pub fn init_vertex_buffer<VertexRawData: BufferItemRawData>(
+/// Similar to [`create_buffer()`], but also initializes the buffer with values
+pub fn init_buffer<ItemRawData: bytemuck::Pod>(
 	name: impl Into<String>,
-	items: impl Into<Vec<VertexRawData>>,
+	items: impl Into<Vec<ItemRawData>>,
+	usages: wgpu::BufferUsages,
 	gpu_instance: &GpuInstance,
-) -> VertexBuffer<VertexRawData> {
+) -> GpuBuffer<ItemRawData> {
 	let items = items.into();
 	let items_len = items.len() as u32;
 	let name = name.into();
@@ -72,34 +79,35 @@ pub fn init_vertex_buffer<VertexRawData: BufferItemRawData>(
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&name),
-			size: u64::from(items_len) * std::mem::size_of::<VertexRawData>() as u64,
-			usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+			size: u64::from(items_len) * std::mem::size_of::<ItemRawData>() as u64,
+			usage: usages,
 			mapped_at_creation: false,
 		});
 	gpu_instance
 		.wgpu_queue
 		.write_buffer(&buffer, 0, bytemuck::cast_slice(&items));
-	VertexBuffer {
-		cpu_buffer: items,
+	GpuBuffer {
+		name,
+		cpu_copy: items,
 		wgpu_buffer: buffer,
 		wgpu_buffer_len: items_len,
 		wgpu_buffer_capacity: items_len,
-		name,
+		wgpu_usages: usages,
 	}
 }
 
-/// Sends the data in a [`VertexBuffer`]'s cpu-side buffer into its wgpu buffer
+/// Sends the data in a [`GpuBuffer`]'s cpu-side buffer into its wgpu buffer
 ///
 /// Note: the wgpu buffer is automatically reallocated if it is not large enough
-pub fn sync_vertex_buffer<VertexRawData: BufferItemRawData>(
-	vertex_buffer: &mut VertexBuffer<VertexRawData>,
+pub fn sync_buffer<ItemRawData: bytemuck::Pod>(
+	vertex_buffer: &mut GpuBuffer<ItemRawData>,
 	gpu_instance: &GpuInstance,
 ) {
-	if vertex_buffer.wgpu_buffer_capacity < vertex_buffer.cpu_buffer.len() as u32 {
-		let new_capacity = (vertex_buffer.cpu_buffer.len() * 3 / 2) as u32;
+	if vertex_buffer.wgpu_buffer_capacity < vertex_buffer.cpu_copy.len() as u32 {
+		let new_capacity = (vertex_buffer.cpu_copy.len() * 3 / 2) as u32;
 		let buf_desc = wgpu::BufferDescriptor {
 			label: Some(&vertex_buffer.name),
-			size: u64::from(new_capacity) * std::mem::size_of::<VertexRawData>() as u64,
+			size: u64::from(new_capacity) * std::mem::size_of::<ItemRawData>() as u64,
 			usage: vertex_buffer.wgpu_buffer.usage(),
 			mapped_at_creation: false,
 		};
@@ -109,50 +117,14 @@ pub fn sync_vertex_buffer<VertexRawData: BufferItemRawData>(
 	gpu_instance.wgpu_queue.write_buffer(
 		&vertex_buffer.wgpu_buffer,
 		0,
-		bytemuck::cast_slice(&vertex_buffer.cpu_buffer),
+		bytemuck::cast_slice(&vertex_buffer.cpu_copy),
 	);
-	vertex_buffer.wgpu_buffer_len = vertex_buffer.cpu_buffer.len() as u32;
+	vertex_buffer.wgpu_buffer_len = vertex_buffer.cpu_copy.len() as u32;
 }
 
 
 
-/// Holds the list of indices that are used to connect vertices into triangles when rendering. Note: it is always assumed that indices are u16 values
-pub struct IndexBuffer {
-	/// A handle to the gpu buffer
-	pub wgpu_buffer: wgpu::Buffer,
-	/// The number of indices this holds
-	pub count: u32,
-}
-
-/// Creates a new index buffer
-#[must_use]
-pub fn create_index_buffer(name: &str, indices: &[u16], gpu_instance: &GpuInstance) -> IndexBuffer {
-	let buffer = gpu_instance
-		.wgpu_device
-		.create_buffer(&wgpu::BufferDescriptor {
-			label: Some(name),
-			size: indices.len() as u64 * 2,
-			usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-			mapped_at_creation: false,
-		});
-	gpu_instance
-		.wgpu_queue
-		.write_buffer(&buffer, 0, bytemuck::cast_slice(indices));
-	IndexBuffer {
-		wgpu_buffer: buffer,
-		count: indices.len() as u32,
-	}
-}
-
-
-
-/// Represents a type that can be put in a [`VertexBuffer`], and can be used for either vertex datas or instance datas, and should be created with [`crate::make_vertex_buffer_type!()`]
-pub trait BufferItemRawData: bytemuck::Pod {
-	/// Defines the data layout of each item
-	const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static>;
-}
-
-/// Creates a type that represents an item in a vertex / instance buffer
+/// Creates a type that represents an item in a vertex / instance buffer, with an associated const field `WGPU_LAYOUT: wgpu::VertexBufferLayout<'static>`
 ///
 /// The first token needs to be either `Vertex` or `Instance`, which directly corresponds to [`wgpu::VertexStepMode`]. After that, you define the struct, where each field has a name, type, shader location, and shader format.
 ///
@@ -162,7 +134,7 @@ pub trait BufferItemRawData: bytemuck::Pod {
 ///
 /// ```
 /// // makes a vertex buffer item type called "VertexData"
-/// simple_gpu::make_vertex_buffer_type!(Vertex, struct VertexData {
+/// simple_gpu::vertex_buffer_item_type!(Vertex, struct VertexData {
 ///     pos:   [f32; 3] as location 0: Float32x3,
 ///     uv:    [f32; 2] as location 1: Float32x2,
 ///     color: [f32; 4] as location 2: Float32x4,
@@ -174,37 +146,40 @@ pub trait BufferItemRawData: bytemuck::Pod {
 /// ```
 /// #[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 /// #[repr(C)]
+/// #[allow(missing_docs, clippy::derive_partial_eq_without_eq)]
 /// pub struct VertexData {
-///     pub pos:   [f32; 3],
-///     pub uv:    [f32; 2],
-///     pub color: [f32; 4],
+///    pub pos: [f32; 3],
+///    pub uv: [f32; 2],
+///    pub color: [f32; 4],
 /// }
-/// impl simple_gpu::BufferItemRawData for VertexData {
-///     const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+/// impl VertexData {
+///     #[allow(missing_docs)]
+///     pub const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
 ///         array_stride: std::mem::size_of::<VertexData>() as u64,
 ///         step_mode: wgpu::VertexStepMode::Vertex,
 ///         attributes: &[
-///             wgpu::VertexAttribute {
+///             (wgpu::VertexAttribute {
 ///                 format: wgpu::VertexFormat::Float32x3,
 ///                 offset: 0,
 ///                 shader_location: 0,
-///             },
-///             wgpu::VertexAttribute {
+///             }),
+///             (wgpu::VertexAttribute {
 ///                 format: wgpu::VertexFormat::Float32x2,
 ///                 offset: (0 + wgpu::VertexFormat::Float32x3.size()),
 ///                 shader_location: 1,
-///             },
-///             wgpu::VertexAttribute {
+///             }),
+///             (wgpu::VertexAttribute {
 ///                 format: wgpu::VertexFormat::Float32x4,
-///                 offset: ((0 + wgpu::VertexFormat::Float32x3.size()) + wgpu::VertexFormat::Float32x2.size()),
+///                 offset: ((0 + wgpu::VertexFormat::Float32x3.size())
+///                     + wgpu::VertexFormat::Float32x2.size()),
 ///                 shader_location: 2,
-///             },
+///             }),
 ///         ],
 ///     };
 /// }
 /// ```
 #[macro_export]
-macro_rules! make_vertex_buffer_type {
+macro_rules! vertex_buffer_item_type {
 	($step_mode:ident, struct $struct_name:ident { $( $field_name:ident : $field_type:ty as location $field_loc:tt : $field_data:ident , )+ }) => {
 		#[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 		#[repr(C)]
@@ -215,8 +190,9 @@ macro_rules! make_vertex_buffer_type {
 			)+
 		}
 
-		impl $crate::BufferItemRawData for $struct_name {
-			const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
+		impl $struct_name {
+			#[allow(missing_docs)]
+			pub const WGPU_LAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
 				array_stride: std::mem::size_of::<$struct_name>() as u64,
 				step_mode: wgpu::VertexStepMode::$step_mode,
 				attributes: &wgpu::vertex_attr_array![

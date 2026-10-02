@@ -22,9 +22,7 @@ use log::info;
 use sdl3::{
 	event::{Event, WindowEvent},
 	keyboard::{KeyboardState, Keycode},
-	libc::rand,
 };
-use simple_gpu::BufferItemRawData;
 use std::{path::PathBuf, time::Instant};
 
 
@@ -73,9 +71,9 @@ struct ProgramData {
 	aspect_ratio: f32,
 
 	pipeline: wgpu::RenderPipeline,
-	vertex_buffer: simple_gpu::VertexBuffer<VertexData>,
-	index_buffer: simple_gpu::IndexBuffer,
-	instance_buffer: simple_gpu::VertexBuffer<InstanceData>,
+	vertex_buffer: simple_gpu::GpuBuffer<VertexData>,
+	index_buffer: simple_gpu::GpuBuffer<u16>,
+	instance_buffer: simple_gpu::GpuBuffer<InstanceData>,
 	textures: Textures,
 
 	uniforms_buffer: simple_gpu::UniformsBuffer<UniformsRawData>,
@@ -97,13 +95,13 @@ struct Textures {
 
 
 
-simple_gpu::make_vertex_buffer_type!(Vertex, struct VertexData {
+simple_gpu::vertex_buffer_item_type!(Vertex, struct VertexData {
 	pos:   [f32; 3] as location 0: Float32x3,
 	uv:    [f32; 2] as location 1: Float32x2,
 	color: [f32; 4] as location 2: Float32x4,
 });
 
-simple_gpu::make_vertex_buffer_type!(Instance, struct InstanceData {
+simple_gpu::vertex_buffer_item_type!(Instance, struct InstanceData {
 	pos: [f32; 3] as location 3: Float32x3,
 });
 
@@ -159,13 +157,13 @@ fn main() -> Result<()> {
 
 	// textures
 	let textures_path = assets_path.join("textures");
-	let mut wall_tex = simple_gpu::load_texture_from_path(
+	let wall_tex = simple_gpu::load_texture_from_path(
 		&textures_path.join("wall.png"),
 		wgpu::FilterMode::Linear,
 		1,
 		&gpu_instance,
 	)?;
-	let mut depth_tex = simple_gpu::create_depth_texture(
+	let depth_tex = simple_gpu::create_depth_texture(
 		"main depth tex",
 		window_size,
 		wgpu::FilterMode::Linear,
@@ -186,7 +184,7 @@ fn main() -> Result<()> {
 	);
 
 	// vertex data
-	let mut vertex_buffer = simple_gpu::init_vertex_buffer(
+	let vertex_buffer = simple_gpu::init_buffer(
 		"main vertex buffer",
 		[
 			VertexData {
@@ -210,15 +208,20 @@ fn main() -> Result<()> {
 				color: [1.0; 4],
 			},
 		],
+		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
 		&gpu_instance,
 	);
 
 	// index data
-	let mut index_buffer =
-		simple_gpu::create_index_buffer("main index buffer", &[0, 1, 2, 2, 1, 3], &gpu_instance);
+	let index_buffer = simple_gpu::init_buffer(
+		"main index buffer",
+		[0, 1, 2, 2, 1, 3],
+		wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+		&gpu_instance,
+	);
 
 	// instance data
-	let mut instance_buffer = simple_gpu::init_vertex_buffer(
+	let instance_buffer = simple_gpu::init_buffer(
 		"main instance buffer",
 		[
 			InstanceData {
@@ -228,6 +231,7 @@ fn main() -> Result<()> {
 				pos: [0.0, 0.0, -3.0],
 			},
 		],
+		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
 		&gpu_instance,
 	);
 

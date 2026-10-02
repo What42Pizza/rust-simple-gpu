@@ -21,13 +21,10 @@ use sdl3::{
 	event::{Event, WindowEvent},
 	keyboard::{KeyboardState, Keycode},
 	libc::rand,
-	mouse::{MouseButton, MouseState},
+	mouse::MouseButton,
 };
-use simple_gpu::{BufferItemRawData, CreatedAtlasResult};
-use std::{
-	path::PathBuf,
-	time::{Duration, Instant},
-};
+use simple_gpu::CreatedAtlasResult;
+use std::{path::PathBuf, time::Instant};
 
 
 
@@ -75,9 +72,9 @@ struct ProgramData {
 	aspect_ratio: f32,
 
 	pipeline: wgpu::RenderPipeline,
-	vertex_buf: simple_gpu::VertexBuffer<VertexData>,
-	index_buf: simple_gpu::IndexBuffer,
-	instance_buf: simple_gpu::VertexBuffer<InstanceData>,
+	vertex_buf: simple_gpu::GpuBuffer<VertexData>,
+	index_buf: simple_gpu::GpuBuffer<u16>,
+	instance_buf: simple_gpu::GpuBuffer<InstanceData>,
 	textures: Textures,
 
 	uniforms_buf: simple_gpu::UniformsBuffer<UniformsRawData>,
@@ -99,13 +96,13 @@ struct Textures {
 
 
 
-simple_gpu::make_vertex_buffer_type!(Vertex, struct VertexData {
+simple_gpu::vertex_buffer_item_type!(Vertex, struct VertexData {
 	pos:   [f32; 3] as location 0: Float32x3,
 	uv:    [f32; 2] as location 1: Float32x2,
 	color: [f32; 4] as location 2: Float32x4,
 });
 
-simple_gpu::make_vertex_buffer_type!(Instance, struct InstanceData {
+simple_gpu::vertex_buffer_item_type!(Instance, struct InstanceData {
 	pos: [f32; 3] as location 3: Float32x3,
 });
 
@@ -123,7 +120,7 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 		let mut data = vec![];
 		for y in 0..height {
 			for x in 0..width {
-				let mult = (x - y) % 16 + 8;
+				let mult = x.wrapping_sub(y) % 16 + 8;
 				data.push((r * mult as u16 / 16) as u8);
 				data.push((g * mult as u16 / 16) as u8);
 				data.push((b * mult as u16 / 16) as u8);
@@ -134,10 +131,10 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 	}
 	let start = Instant::now();
 	let CreatedAtlasResult {
-		placements,
+		placements: _,
 		atlas_tex: tex,
-		atlas_tex_data: tex_data,
-		atlas_allocator: allocator,
+		atlas_tex_data: _,
+		atlas_allocator: _,
 	} = simple_gpu::create_texture_atlas(
 		"main atlas",
 		&atlas_textures,
@@ -152,7 +149,6 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 		"generated new atlas, time taken: {} micros",
 		start.elapsed().as_micros()
 	);
-	let start = Instant::now();
 	tex
 }
 
@@ -206,8 +202,7 @@ fn main() -> Result<()> {
 	let mut uniforms_raw_data = UniformsRawData::zeroed();
 
 	// textures
-	let textures_path = assets_path.join("textures");
-	let mut depth_tex = simple_gpu::create_depth_texture(
+	let depth_tex = simple_gpu::create_depth_texture(
 		"main depth tex",
 		window_size,
 		wgpu::FilterMode::Linear,
@@ -228,7 +223,7 @@ fn main() -> Result<()> {
 	);
 
 	// vertex data
-	let mut vertex_buffer = simple_gpu::init_vertex_buffer(
+	let vertex_buffer = simple_gpu::init_buffer(
 		"main vertex buffer",
 		[
 			VertexData {
@@ -252,19 +247,25 @@ fn main() -> Result<()> {
 				color: [1.0; 4],
 			},
 		],
+		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
 		&gpu_instance,
 	);
 
 	// index data
-	let mut index_buffer =
-		simple_gpu::create_index_buffer("main index buffer", &[0, 1, 2, 2, 1, 3], &gpu_instance);
+	let index_buffer = simple_gpu::init_buffer(
+		"main index buffer",
+		[0, 1, 2, 2, 1, 3],
+		wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+		&gpu_instance,
+	);
 
 	// instance data
-	let mut instance_buffer = simple_gpu::init_vertex_buffer(
+	let instance_buffer = simple_gpu::init_buffer(
 		"main instance buffer",
 		[InstanceData {
 			pos: [0.0, 0.0, -1.5],
 		}],
+		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
 		&gpu_instance,
 	);
 
