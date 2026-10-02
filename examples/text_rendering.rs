@@ -182,7 +182,7 @@ fn main() -> Result<()> {
 	// vertex data
 	let mut vertex_buffer = simple_gpu::init_vertex_buffer(
 		"main vertex buffer",
-		&[
+		[
 			VertexData {
 				pos: [1.0, 1.0, 0.0],
 				uv: [1.0, 0.0],
@@ -214,7 +214,7 @@ fn main() -> Result<()> {
 	// instance data
 	let mut instance_buffer = simple_gpu::init_vertex_buffer(
 		"main instance buffer",
-		&[InstanceData {
+		[InstanceData {
 			pos: [0.5, 0.5, -2.5],
 		}],
 		&gpu_instance,

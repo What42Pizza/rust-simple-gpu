@@ -7,7 +7,7 @@ cargo fmt
 echo "======== clippy ========"
 cargo clippy --all-targets --all-features -- -D warnings
 echo "======== doc ========"
-cargo doc --no-deps --document-private-items
+cargo doc --all-features --document-private-items
 echo "======== package list ========"
 cargo package --list
 echo "======== publish dry run ========"

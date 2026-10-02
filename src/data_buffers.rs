@@ -162,7 +162,7 @@ pub trait BufferItemRawData: bytemuck::Pod {
 ///
 /// ```
 /// // makes a vertex buffer item type called "VertexData"
-/// make_vertex_buffer_type!(Vertex, struct VertexData {
+/// simple_gpu::make_vertex_buffer_type!(Vertex, struct VertexData {
 ///     pos:   [f32; 3] as location 0: Float32x3,
 ///     uv:    [f32; 2] as location 1: Float32x2,
 ///     color: [f32; 4] as location 2: Float32x4,

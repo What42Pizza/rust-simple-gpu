@@ -294,7 +294,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 			defines: &[],
 		},
 	});
-	#[cfg(feature = "wgsl")]
+	#[cfg(all(feature = "wgsl", not(feature = "glsl")))]
 	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
 		label: Some("mipmap_vertex_shader"),
 		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
@@ -309,7 +309,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 			defines: &[],
 		},
 	});
-	#[cfg(feature = "wgsl")]
+	#[cfg(all(feature = "wgsl", not(feature = "glsl")))]
 	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
 		label: Some("mipmap_fragment_shader"),
 		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
