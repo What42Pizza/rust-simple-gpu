@@ -19,7 +19,7 @@ float invMix(float low, float high, float v) {
 	return (v - low) / (high - low);
 }
 
-float samplePos(vec2 pos, float blur) {
+float samplePos(vec2 pos, float blur, float thickness) {
 	
 	vec2 posScaled = pos * textureSize(atlas, 0) - 0.5;
 	ivec2 posInt = ivec2(posScaled);
@@ -63,7 +63,7 @@ float samplePos(vec2 pos, float blur) {
 		vec_HH * weight_HH;
 	filteredVec /= weight_LL + weight_LH + weight_HL + weight_HH;
 	
-	return clamp(invMix(2.0 + blur, 2.0, length(filteredVec)), 0.0, 1.0);
+	return invMix(thickness + blur, thickness, length(filteredVec));
 	
 }
 
@@ -85,13 +85,14 @@ void main() {
 	vec2 texelCoordFloat = texcoord * textureSize(atlas, 0);
 	ivec2 texelCoord = ivec2(texelCoordFloat);
 	
-	float subPixSize = 0.28 / targetSize.x;
+	float subPixSize = 0.25 / targetSize.x;
 	float blurSize = 2.0 / targetSize.x * textureSize(atlas, 0).x;
 	vec3 mixFactors = vec3(
-		samplePos(texcoord - vec2(subPixSize, 0.0), blurSize),
+		samplePos(texcoord - vec2(subPixSize, 0.0), blurSize, 1.0 + targetSize.x * 0.001),
 		0.0,
-		samplePos(texcoord + vec2(subPixSize, 0.0), blurSize)
+		samplePos(texcoord + vec2(subPixSize, 0.0), blurSize, 1.0 + targetSize.x * 0.001)
 	);
+	mixFactors.rb = pow(mixFactors.rb, vec2(1.5));
 	mixFactors.g = (mixFactors.r + mixFactors.b) * 0.5;
 	
 	frag_color = vec4(

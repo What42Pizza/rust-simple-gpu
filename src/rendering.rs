@@ -292,3 +292,34 @@ pub fn render(
 		render_pass.draw(0..vertex_count, 0..instance_count);
 	}
 }
+
+
+
+/// Clears a number of targets with given clear colors
+pub fn clear_targets(
+	name: &str,
+	output_textures: &[(&wgpu::TextureView, wgpu::Color)],
+	command_encoder: &mut wgpu::CommandEncoder,
+) {
+	let mut color_attachments = vec![];
+	for (texture, clear_color) in output_textures {
+		color_attachments.push(Some(wgpu::RenderPassColorAttachment {
+			view: texture,
+			depth_slice: None,
+			resolve_target: None,
+			ops: wgpu::Operations {
+				load: wgpu::LoadOp::Clear(*clear_color),
+				store: wgpu::StoreOp::Store,
+			},
+		}));
+	}
+	let render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+		label: Some(name),
+		color_attachments: &color_attachments,
+		depth_stencil_attachment: None,
+		timestamp_writes: None,
+		occlusion_query_set: None,
+		multiview_mask: None,
+	});
+	finish_render_pass(render_pass);
+}
