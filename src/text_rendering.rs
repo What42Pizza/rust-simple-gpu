@@ -2,7 +2,8 @@
 use crate::sync_buffer;
 use crate::{
 	AtlasAllocator, CreatedAtlasResult, GpuBuffer, GpuInstance, Texture, USAGE_VERTEX_BUFFER,
-	create_buffer, create_texture_atlas, get_gpu_limits, vertex_buffer_item_type,
+	create_buffer, create_texture, create_texture_atlas, get_gpu_limits, place_textures_in_atlas,
+	update_texture, vertex_buffer_item_type,
 };
 use anyhow::{Result, bail};
 use std::{array::from_fn, collections::HashMap};
@@ -30,6 +31,8 @@ pub struct TextRenderer {
 	pub atlas_tex: Texture,
 	/// The raw data for the atlas texture
 	pub atlas_tex_data: Vec<u8>,
+	/// Flag for if `Self::atlas_tex_data` holds data that needs to be synced into `Self::atlas_tex`
+	pub atlas_tex_is_dirty: bool,
 	/// This is the allocator used for placing characters into the atlas
 	pub atlas_allocator: AtlasAllocator,
 
@@ -181,6 +184,7 @@ pub fn create_text_renderer(
 		atlas_tex,
 		atlas_tex_data,
 		atlas_allocator,
+		atlas_tex_is_dirty: false,
 
 		ascii_chars,
 		non_asci_chars: HashMap::new(),
@@ -267,12 +271,103 @@ pub fn place_text(
 	//	let glyph_id = font_ref.charmap().map(c);
 	//	glyph_to_char_mappings.insert(glyph_id, c);
 	//}
-	let mut x = 0;
+	let mut x = pos.0;
 	shaper.shape_with(|cluster| {
 		for glyph in cluster.glyphs {
 			x += glyph.advance as i32;
 		}
 	});
+}
+
+
+
+/// Gets the [`CharRenderData`] for a given character, and generates and populates the data for characters which have not had their vdf texture generated yet
+pub fn get_char_render_data<'a>(
+	c: char,
+	text_renderer: &'a mut TextRenderer,
+	gpu_instance: &mut GpuInstance,
+) -> &'a CharRenderData {
+	if c.is_ascii() {
+		&text_renderer.ascii_chars[c as usize]
+	} else if let Some(char_data) = text_renderer.non_asci_chars.get(&c) {
+		char_data
+	} else {
+		let char_data = generate_char_render_data(c, text_renderer, gpu_instance);
+		text_renderer.non_asci_chars.insert(c, char_data);
+		&text_renderer.non_asci_chars[&c]
+	}
+}
+
+/// Generates the [`CharRenderData`] for a given non-ascii character (because all ascii characters are guaranteed to be generated when [`TextRenderer`] is created)
+///
+/// # Panics
+///
+/// This panics if it a glyph fails to render
+pub fn generate_char_render_data(
+	c: char,
+	text_renderer: &mut TextRenderer,
+	gpu_instance: &mut GpuInstance,
+) -> CharRenderData {
+	let font_ref = FontRef {
+		data: &text_renderer.font_data,
+		offset: 0,
+		key: CacheKey::new(),
+	};
+	let mut scale_context = ScaleContext::new();
+	let mut font_scaler = scale_context
+		.builder(font_ref)
+		.size((text_renderer.rasterize_size * 3) as f32)
+		.hint(true)
+		.build();
+
+	let glyph_id = font_ref.charmap().map(c);
+	let mut bitmap = Render::new(&[Source::Outline, Source::Bitmap(StrikeWith::BestFit)])
+		.format(Format::Alpha)
+		.render(&mut font_scaler, glyph_id)
+		.expect("Failed to render glyph for character");
+	let data = generate_vdf(&bitmap.data, bitmap.placement.width);
+	bitmap.placement.width = (bitmap.placement.width) / 3 + 4;
+	bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
+	bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
+	bitmap.placement.top = (bitmap.placement.top + 1) / 3 + 2;
+	let glyph_offset = (bitmap.placement.left as u32, bitmap.placement.top as u32);
+
+	let (placement, needs_resize, atlas_tex_size) = place_textures_in_atlas(
+		&[&*data],
+		&[(bitmap.placement.width, bitmap.placement.height)],
+		2,
+		&mut text_renderer.atlas_tex_data,
+		&mut text_renderer.atlas_allocator,
+		0,
+	);
+	let loc = placement[0];
+
+	if needs_resize {
+		text_renderer.atlas_tex = create_texture(
+			&text_renderer.atlas_tex.name,
+			atlas_tex_size,
+			wgpu::TextureFormat::Rg8Unorm,
+			wgpu::FilterMode::Linear,
+			1,
+			gpu_instance,
+		);
+	}
+	update_texture(
+		&text_renderer.atlas_tex,
+		&text_renderer.atlas_tex_data,
+		gpu_instance,
+	);
+
+	CharRenderData {
+		tex_coords: [
+			loc.pos.0 as u16,
+			loc.pos.1 as u16,
+			(loc.pos.0 + loc.size.0) as u16,
+			(loc.pos.1 + loc.size.1) as u16,
+		],
+		glyph_offset,
+		vdf_tex_data: data,
+	}
 }
 
 

@@ -5,6 +5,8 @@
 // - wasd
 // - space: up
 // - left shift: down
+// - left click: generate new atlas
+// - right click: add random texture to current atlas
 // - esc: quit
 
 
@@ -71,6 +73,9 @@ struct ProgramData {
 	camera: CameraData,
 	aspect_ratio: f32,
 
+	atlas_tex_data: Vec<u8>,
+	atlas_allocator: simple_gpu::AtlasAllocator,
+
 	pipeline: wgpu::RenderPipeline,
 	vertex_buf: simple_gpu::GpuBuffer<VertexData>,
 	index_buf: simple_gpu::GpuBuffer<u16>,
@@ -108,33 +113,38 @@ simple_gpu::vertex_buffer_item_type!(Instance, struct InstanceData {
 
 
 
+fn make_random_texture_data() -> (u32, u32, Vec<u8>) {
+	let width = (2 + (7 & unsafe { rand() as u32 })) * (2 + (7 & unsafe { rand() as u32 }));
+	let height = (2 + (7 & unsafe { rand() as u32 })) * (2 + (7 & unsafe { rand() as u32 }));
+	let r = 16 + (127 & unsafe { rand() as u16 });
+	let g = 16 + (127 & unsafe { rand() as u16 });
+	let b = 16 + (127 & unsafe { rand() as u16 });
+	let mut data = vec![];
+	for y in 0..height {
+		for x in 0..width {
+			let mult = x.wrapping_sub(y) % 16 + 8;
+			data.push((r * mult as u16 / 16) as u8);
+			data.push((g * mult as u16 / 16) as u8);
+			data.push((b * mult as u16 / 16) as u8);
+			data.push(255);
+		}
+	}
+	(width, height, data)
+}
 
-fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture {
+fn make_atlas(
+	gpu_instance: &mut simple_gpu::GpuInstance,
+) -> (simple_gpu::Texture, Vec<u8>, simple_gpu::AtlasAllocator) {
 	let mut atlas_textures = vec![];
 	for _ in 0..32 + (127 & unsafe { rand() }) {
-		let width = (2 + (7 & unsafe { rand() as u32 })) * (2 + (7 & unsafe { rand() as u32 }));
-		let height = (2 + (7 & unsafe { rand() as u32 })) * (2 + (7 & unsafe { rand() as u32 }));
-		let r = 16 + (127 & unsafe { rand() as u16 });
-		let g = 16 + (127 & unsafe { rand() as u16 });
-		let b = 16 + (127 & unsafe { rand() as u16 });
-		let mut data = vec![];
-		for y in 0..height {
-			for x in 0..width {
-				let mult = x.wrapping_sub(y) % 16 + 8;
-				data.push((r * mult as u16 / 16) as u8);
-				data.push((g * mult as u16 / 16) as u8);
-				data.push((b * mult as u16 / 16) as u8);
-				data.push(255);
-			}
-		}
-		atlas_textures.push((width, height, data));
+		atlas_textures.push(make_random_texture_data());
 	}
 	let start = Instant::now();
 	let CreatedAtlasResult {
 		placements: _,
 		atlas_tex: tex,
-		atlas_tex_data: _,
-		atlas_allocator: _,
+		atlas_tex_data: tex_data,
+		atlas_allocator: allocator,
 	} = simple_gpu::create_texture_atlas(
 		"main atlas",
 		&atlas_textures,
@@ -149,7 +159,39 @@ fn make_atlas(gpu_instance: &mut simple_gpu::GpuInstance) -> simple_gpu::Texture
 		"generated new atlas, time taken: {} micros",
 		start.elapsed().as_micros()
 	);
-	tex
+	(tex, tex_data, allocator)
+}
+
+fn add_to_atlas(
+	atlas_tex: &mut simple_gpu::Texture,
+	atlas_tex_data: &mut Vec<u8>,
+	atlas_allocator: &mut simple_gpu::AtlasAllocator,
+	gpu_instance: &mut simple_gpu::GpuInstance,
+) {
+	let (width, height, data) = make_random_texture_data();
+	let (placements, needs_resize, atlas_tex_size) = simple_gpu::place_textures_in_atlas(
+		&[data],
+		&[(width, height)],
+		4,
+		atlas_tex_data,
+		atlas_allocator,
+		0,
+	);
+	if needs_resize {
+		*atlas_tex = simple_gpu::create_texture(
+			&atlas_tex.name,
+			atlas_tex_size,
+			atlas_tex.wgpu_format,
+			wgpu::FilterMode::Nearest,
+			atlas_tex.mip_count,
+			gpu_instance,
+		)
+	}
+	simple_gpu::update_texture(atlas_tex, atlas_tex_data, gpu_instance);
+	let mut command_encoder =
+		simple_gpu::start_command_encoder("refill atlas mipmaps", gpu_instance);
+	simple_gpu::refill_mipmaps(atlas_tex, &mut command_encoder, gpu_instance);
+	simple_gpu::submit_gpu_commands(command_encoder, gpu_instance);
 }
 
 
@@ -270,7 +312,7 @@ fn main() -> Result<()> {
 	);
 
 	// randomly generated atlas
-	let atlas = make_atlas(&mut gpu_instance);
+	let (atlas_tex, atlas_tex_data, atlas_allocator) = make_atlas(&mut gpu_instance);
 
 	// assemble program's data
 	let mut data = ProgramData {
@@ -288,11 +330,17 @@ fn main() -> Result<()> {
 		},
 		aspect_ratio: window_size.0 as f32 / window_size.1 as f32,
 
+		atlas_tex_data,
+		atlas_allocator,
+
 		pipeline,
 		vertex_buf: vertex_buffer,
 		index_buf: index_buffer,
 		instance_buf: instance_buffer,
-		textures: Textures { depth_tex, atlas },
+		textures: Textures {
+			depth_tex,
+			atlas: atlas_tex,
+		},
 
 		uniforms_buf: uniforms_buffer,
 	};
@@ -347,7 +395,22 @@ fn main() -> Result<()> {
 					mouse_btn: MouseButton::Left,
 					..
 				} => {
-					data.textures.atlas = make_atlas(&mut gpu_instance);
+					(
+						data.textures.atlas,
+						data.atlas_tex_data,
+						data.atlas_allocator,
+					) = make_atlas(&mut gpu_instance);
+				}
+				Event::MouseButtonDown {
+					mouse_btn: MouseButton::Right,
+					..
+				} => {
+					add_to_atlas(
+						&mut data.textures.atlas,
+						&mut data.atlas_tex_data,
+						&mut data.atlas_allocator,
+						&mut gpu_instance,
+					);
 				}
 				e => {
 					info!("Unknown event: {e:?}");

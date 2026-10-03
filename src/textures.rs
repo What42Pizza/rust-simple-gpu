@@ -8,7 +8,11 @@ use crate::{start_command_encoder, submit_gpu_commands};
 #[cfg(feature = "image")]
 use std::path::Path;
 #[cfg(all(feature = "atlas", feature = "image"))]
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+	collections::HashMap,
+	path::PathBuf,
+	ptr::{copy_nonoverlapping, write_bytes},
+};
 
 
 
@@ -355,7 +359,7 @@ impl Default for AtlasLocation {
 /// When a texture atlas is created, the allocator for it has its coordinates scaled down by `2 ^ max_mip`. This is to ensure that all positions are automatically aligned to mip boundaries, but it can also create some confusion. To make it more obvious that this is the case (and also for some extra convenience), the allocator is wrapped in this struct along with the max mip level it was created with
 #[cfg(feature = "atlas")]
 pub struct AtlasAllocator {
-	/// The actual allocator
+	/// The actual allocator. Note: the size returned by `allocator::size()` needs to be scaled by `<< max_mip` to get the size of the atlas texture
 	pub allocator: guillotiere::AtlasAllocator,
 	/// The mip level this allocator uses. The allocator must have a size that is a multiple of `2 ^ map_mip`, and the outputs must be scaled up by `2 ^ max_mip` (which is automatically done with the methods on this struct)
 	pub max_mip: u32,
@@ -396,7 +400,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	format: wgpu::TextureFormat,
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
-	fill_value: u8,
+	blank_fill_value: u8,
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &mut GpuInstance,
 ) -> CreatedAtlasResult<Vec<AtlasLocation>> {
@@ -432,7 +436,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 		(atlas_size, atlas_size)
 	};
 
-	let mut locations = vec![
+	let mut placements = vec![
 		AtlasLocation {
 			pos: (0, 0),
 			size: (0, 0),
@@ -450,23 +454,25 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 		));
 
 		for (width, height, _data, i) in &textures {
-			let (width, height) = (
+			let (allocation_width, allocation_height) = (
 				fit_mip(*width, max_mip) >> max_mip,
 				fit_mip(*height, max_mip) >> max_mip,
 			);
-			let Some(loc) = allocator.allocate(guillotiere::size2(width as i32, height as i32))
-			else {
+			let Some(loc) = allocator.allocate(guillotiere::size2(
+				allocation_width as i32,
+				allocation_height as i32,
+			)) else {
 				//println!("did not fit");
 				atlas_width = atlas_width * 32 / 31 + 1;
 				atlas_height = atlas_height * 32 / 31 + 1;
 				continue 'try_alloc;
 			};
-			locations[*i] = AtlasLocation {
+			placements[*i] = AtlasLocation {
 				pos: (
 					(loc.rectangle.x_range().start as u32) << max_mip,
 					(loc.rectangle.y_range().start as u32) << max_mip,
 				),
-				size: (width << max_mip, height << max_mip),
+				size: (*width, *height),
 				alloc_id: loc.id,
 			};
 		}
@@ -485,15 +491,15 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 		// note: fills with fully transparent black
 		let mut atlas_tex_data =
 			vec![
-				fill_value;
+				blank_fill_value;
 				atlas_width as usize * atlas_height as usize * bytes_per_pixel as usize
 			];
 
 		for (width, height, data, i) in &textures {
 			let data = data.as_ref();
-			place_texture_in_atlas(
+			place_texture_in_atlas_at_pos(
 				data,
-				locations[*i].pos,
+				placements[*i].pos,
 				(*width, *height),
 				&mut atlas_tex_data,
 				(atlas_width, atlas_height),
@@ -514,7 +520,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 		let allocator = AtlasAllocator { allocator, max_mip };
 
 		return CreatedAtlasResult {
-			placements: locations,
+			placements,
 			atlas_tex,
 			atlas_tex_data,
 			atlas_allocator: allocator,
@@ -522,14 +528,107 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 	}
 }
 
-/// Places a texture's pixel data inside the pixel data of a texture atlas, with padding for mip mapping
+
+
+/// Places a texture's pixel data somewhere inside a texture atlas, increasing the atlas size if needed, and returning the position of the placed element
+///
+/// The return values are 1: the locations of the placed textures, 2: whether the atlas was resized, and 3: the new size of `atlas_tex_data`
+#[must_use]
 #[cfg(feature = "atlas")]
-pub fn place_texture_in_atlas(
+pub fn place_textures_in_atlas(
+	tex_datas: &[impl AsRef<[u8]>],
+	tex_sizes: &[(u32, u32)],
+	bytes_per_pixel: u32,
+	atlas_data: &mut Vec<u8>,
+	allocator: &mut AtlasAllocator,
+	blank_fill_value: u8,
+) -> (Vec<AtlasLocation>, bool, (u32, u32)) {
+	use guillotiere::euclid::{Size2D, UnknownUnit};
+
+	debug_assert_eq!(tex_datas.len(), tex_sizes.len());
+
+	let starting_allocator_size = allocator.allocator.size();
+	let mut new_allocator_size = starting_allocator_size;
+	let mut next_grow_amount: Size2D<i32, UnknownUnit> =
+		if new_allocator_size.width > new_allocator_size.height {
+			guillotiere::size2(1, 2)
+		} else {
+			guillotiere::size2(2, 1)
+		};
+	let mut locations = Vec::with_capacity(tex_sizes.len());
+	for tex_size in tex_sizes {
+		let (allocation_width, allocation_height) = (
+			(fit_mip(tex_size.0, allocator.max_mip) >> allocator.max_mip) as i32,
+			(fit_mip(tex_size.1, allocator.max_mip) >> allocator.max_mip) as i32,
+		);
+		let allocation = loop {
+			let allocation = allocator
+				.allocator
+				.allocate(guillotiere::size2(allocation_width, allocation_height));
+			if let Some(allocation) = allocation {
+				break allocation;
+			}
+			new_allocator_size.width *= next_grow_amount.width;
+			new_allocator_size.height *= next_grow_amount.height;
+			allocator.allocator.grow(new_allocator_size);
+			(next_grow_amount.width, next_grow_amount.height) =
+				(next_grow_amount.height, next_grow_amount.width);
+		};
+		locations.push(AtlasLocation {
+			pos: (
+				(allocation.rectangle.x_range().start as u32) << allocator.max_mip,
+				(allocation.rectangle.y_range().start as u32) << allocator.max_mip,
+			),
+			size: *tex_size,
+			alloc_id: allocation.id,
+		});
+	}
+
+	let atlas_tex_size = (
+		(new_allocator_size.width << allocator.max_mip) as u32,
+		(new_allocator_size.height << allocator.max_mip) as u32,
+	);
+	let needs_resize = allocator.allocator.size() != starting_allocator_size;
+	if needs_resize {
+		let old_atlas_tex_size = (
+			(starting_allocator_size.width << allocator.max_mip) as u32,
+			(starting_allocator_size.height << allocator.max_mip) as u32,
+		);
+		resize_atlas_data(
+			atlas_data,
+			bytes_per_pixel,
+			old_atlas_tex_size,
+			atlas_tex_size,
+			blank_fill_value,
+		);
+	}
+
+	for (tex_data, location) in tex_datas.iter().zip(&locations) {
+		let tex_data = tex_data.as_ref();
+		place_texture_in_atlas_at_pos(
+			tex_data,
+			location.pos,
+			location.size,
+			atlas_data,
+			atlas_tex_size,
+			allocator.max_mip + 1,
+			bytes_per_pixel,
+		);
+	}
+
+	(locations, needs_resize, atlas_tex_size)
+}
+
+/// Places a texture's pixel data inside the pixel data of a texture atlas at a specific, with padding for mip mapping
+///
+/// Note: the `mip_count` value needs to be `Allocator::max_mip + 1` (because a max mip of 0 means there is one mip level)
+#[cfg(feature = "atlas")]
+pub fn place_texture_in_atlas_at_pos(
 	tex_data: &[u8],
 	pos: (u32, u32),
 	size: (u32, u32),
-	atlas_data: &mut [u8],
-	atlas_size: (u32, u32),
+	atlas_tex_data: &mut [u8],
+	atlas_tex_size: (u32, u32),
 	mip_count: u32,
 	bytes_per_pixel: u32,
 ) {
@@ -540,8 +639,8 @@ pub fn place_texture_in_atlas(
 		"Texture data is not the correct size"
 	);
 	debug_assert_eq!(
-		atlas_data.len(),
-		(atlas_size.0 * atlas_size.1 * bytes_per_pixel) as usize,
+		atlas_tex_data.len(),
+		(atlas_tex_size.0 * atlas_tex_size.1 * bytes_per_pixel) as usize,
 		"Atlas texture data is not the correct size"
 	);
 	debug_assert_eq!(
@@ -555,19 +654,19 @@ pub fn place_texture_in_atlas(
 		"Texture is not positioned on a mip boundary (this is likely due to incorrect usage of the guillotiere allocator)"
 	);
 	debug_assert_eq!(
-		atlas_size.0,
-		atlas_size.0 & (u32::MAX << max_mip),
+		atlas_tex_size.0,
+		atlas_tex_size.0 & (u32::MAX << max_mip),
 		"Atlas size does not line up with the max mip level"
 	);
 	debug_assert_eq!(
-		atlas_size.1,
-		atlas_size.1 & (u32::MAX << max_mip),
+		atlas_tex_size.1,
+		atlas_tex_size.1 & (u32::MAX << max_mip),
 		"Atlas size does not line up with the max mip level"
 	);
 
 	let (x, y) = pos;
 	let (width, height) = size;
-	let (atlas_width, _atlas_height) = atlas_size;
+	let (atlas_width, _atlas_height) = atlas_tex_size;
 	let mip_fitted_width = fit_mip(width, max_mip);
 	let mip_fitted_height = fit_mip(height, max_mip);
 
@@ -576,7 +675,7 @@ pub fn place_texture_in_atlas(
 		let src = &tex_data[(row_y * width * bytes_per_pixel) as usize..]
 			[..(width * bytes_per_pixel) as usize];
 		// get destination row
-		let mut dst = &mut atlas_data
+		let mut dst = &mut atlas_tex_data
 			[(x * bytes_per_pixel + (y + row_y) * atlas_width * bytes_per_pixel) as usize..]
 			[..(mip_fitted_width * bytes_per_pixel) as usize];
 		// copy
@@ -600,7 +699,7 @@ pub fn place_texture_in_atlas(
 	if height != mip_fitted_height {
 		// split it so that we can copy part of the data into another part of the data
 		let (src, dst) =
-			atlas_data.split_at_mut(((y + height) * atlas_width * bytes_per_pixel) as usize);
+			atlas_tex_data.split_at_mut(((y + height) * atlas_width * bytes_per_pixel) as usize);
 		// select the bottom row of the texture
 		let src = &src[src.len() - ((atlas_width - x) * bytes_per_pixel) as usize..]
 			[..(mip_fitted_width * bytes_per_pixel) as usize];
@@ -620,6 +719,59 @@ pub fn place_texture_in_atlas(
 			}
 		}
 	}
+}
+
+
+
+/// Resizes an atlas texture's cpu-side data. Notes:
+/// - The `new_allocator_size` value is the size of the allocator, meaning it is `fit_mip(new_tex_size, max_mip) >> max_mip)`
+/// - The new size cannot be smaller than the old size
+#[allow(clippy::uninit_vec)]
+#[cfg(feature = "atlas")]
+pub fn resize_atlas_data(
+	atlas_data: &mut Vec<u8>,
+	bytes_per_pixel: u32,
+	old_size: (u32, u32),
+	new_size: (u32, u32),
+	blank_fill_value: u8,
+) {
+	let (old_size, new_size) = (
+		(old_size.0 as usize, old_size.1 as usize),
+		(new_size.0 as usize, new_size.1 as usize),
+	);
+	let mut new_atlas_data = Vec::with_capacity(new_size.0 * new_size.1 * bytes_per_pixel as usize);
+	unsafe {
+		// safety: this has the capacity due to the `.reserve()` above, and u8 is always valid, and the uninitialized memory is fully overwritten before being read
+		new_atlas_data.set_len(new_size.0 * new_size.1 * bytes_per_pixel as usize);
+	}
+	let (old_atlas_ptr, new_atlas_ptr) = (atlas_data.as_ptr(), new_atlas_data.as_mut_ptr());
+
+	let old_row_size = old_size.0 * bytes_per_pixel as usize;
+	let new_row_size = new_size.0 * bytes_per_pixel as usize;
+	let (mut old_row_ptr, mut new_row_ptr) = (old_atlas_ptr, new_atlas_ptr);
+	for _ in 0..old_size.1 {
+		unsafe {
+			// Safety: the math is good I guess
+			copy_nonoverlapping(old_row_ptr, new_row_ptr, old_row_size);
+			write_bytes(
+				new_row_ptr.wrapping_add(old_row_size),
+				blank_fill_value,
+				new_row_size - old_row_size,
+			);
+			old_row_ptr = old_row_ptr.wrapping_add(old_row_size);
+			new_row_ptr = new_row_ptr.wrapping_add(new_row_size);
+		}
+	}
+	unsafe {
+		// Safety: the math is good I guess
+		write_bytes(
+			new_row_ptr,
+			blank_fill_value,
+			(new_size.1 - old_size.0) * new_row_size,
+		);
+	}
+
+	*atlas_data = new_atlas_data;
 }
 
 /// Rounds a value up to the nearest `1 << max_mip`. For example, `fit_mip(20, 3)` will return 32 because `1 << 3` is 16 and 32 is the lowest multiple of 16 that can fit 20
