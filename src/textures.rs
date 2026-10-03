@@ -20,12 +20,12 @@ pub struct Texture {
 	///
 	/// Note: this can be used within shaders to see all mipmap levels
 	pub wgpu_view: wgpu::TextureView,
+	/// This is a bind group with just one binding, which is a view to this texture. The layout for this is taken from [`GpuInstance::wgpu_texture_bind_group_layout`]
+	pub wgpu_bind_group: wgpu::BindGroup,
 	/// Similar to `wgpu_view`, but contains one view for each mipmap level This is not needed for most operations and is only used for refilling mipmaps
 	pub wgpu_mipmap_views: Vec<wgpu::TextureView>,
 	/// Similar to `wgpu_bind_group`, but contains corresponding views from `wgpu_mipmap_view`. This is not needed for most operations and is only used for refilling mipmaps
 	pub wgpu_mipmap_bind_groups: Vec<wgpu::BindGroup>,
-	/// This is a bind group with just one binding, which is a view to this texture. The layout for this is taken from [`GpuInstance::wgpu_texture_bind_group_layout`]
-	pub wgpu_bind_group: wgpu::BindGroup,
 	/// Specifies the format of the texture's texels (aka pixels)
 	pub wgpu_format: wgpu::TextureFormat,
 	/// Specified the number of mip levels this texture contains (must be at least 1)
@@ -128,9 +128,9 @@ pub fn create_texture(
 	Texture {
 		wgpu_texture: texture,
 		wgpu_view: view,
+		wgpu_bind_group: bind_group,
 		wgpu_mipmap_views: mipmap_views,
 		wgpu_mipmap_bind_groups: mipmap_bind_groups,
-		wgpu_bind_group: bind_group,
 		wgpu_format: format,
 		mip_count,
 		name,

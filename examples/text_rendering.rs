@@ -158,7 +158,7 @@ fn main() -> Result<()> {
 	// font
 	let font_file = std::fs::read_to_string(assets_path.join("font.txt"))?;
 	let font = std::fs::read(assets_path.join(font_file))?;
-	let text_renderer = simple_gpu::create_text_renderer(font, 640, None, &mut gpu_instance)?;
+	let text_renderer = simple_gpu::create_text_renderer(font, 64, None, &mut gpu_instance)?;
 
 	// pipeline
 	let pipeline = simple_gpu::create_2d_pipeline(
@@ -244,6 +244,17 @@ fn main() -> Result<()> {
 
 		uniforms_buffer,
 	};
+
+	let mut char_buf = simple_gpu::create_characters_buffer("main text buffer", &mut gpu_instance);
+	simple_gpu::place_text(
+		"Text Test Abc",
+		(16, 16, 0),
+		32,
+		wgpu::Color::BLACK,
+		&mut char_buf,
+		&mut data.text_renderer,
+	);
+	panic!();
 
 
 

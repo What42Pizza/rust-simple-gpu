@@ -1,23 +1,30 @@
+#[cfg(doc)]
+use crate::sync_buffer;
 use crate::{
 	AtlasAllocator, CreatedAtlasResult, GpuBuffer, GpuInstance, Texture, USAGE_VERTEX_BUFFER,
 	create_buffer, create_texture_atlas, get_gpu_limits, vertex_buffer_item_type,
 };
-use anyhow::Result;
+use anyhow::{Result, bail};
 use std::{array::from_fn, collections::HashMap};
 use swash::{
 	CacheKey, FontRef,
 	scale::{Render, ScaleContext, Source, StrikeWith},
+	shape::ShapeContext,
 	zeno::Format,
 };
 
 
 
 /// Holds all the data needed for rendering text
+///
+/// Note: you might want to clear both [`string_datas_buffer`](Self::string_datas_buffer) and [`string_data_locations`](Self::string_data_locations) if `Self::string_datas_buffer.len()` gets too high. Especially if you're rendering strings that have lots of different depths
 pub struct TextRenderer {
 	/// Holds the raw font data
 	pub font_data: Vec<u8>,
 	/// This is the size at which font is rendered for storage within the character atlas
 	pub rasterize_size: u32,
+	/// Weird implementation detail, this value is needed for text layout creation
+	pub shaping_context: ShapeContext,
 
 	/// The atlas for character textures
 	pub atlas_tex: Texture,
@@ -48,9 +55,10 @@ pub struct CharRenderData {
 }
 
 vertex_buffer_item_type!(Instance, struct CharInstanceData {
-	screen_coords: [u16; 4] as location 0: Uint16x4,
-	tex_coords: [u16; 4]    as location 1: Uint16x4,
-	string_id: u32          as location 2: Uint32,
+	screen_pos: [i32; 2]  as location 0: Sint32x2,
+	screen_size: [u16; 2] as location 0: Sint16x2,
+	tex_coords: [u16; 4]  as location 1: Uint16x4,
+	string_id: u32        as location 2: Uint32,
 });
 
 /// Holds the per-string data to render
@@ -61,6 +69,8 @@ pub struct StringData {
 	pub color: [u8; 4],
 	/// Holds the background color, used for subpixel rendering. Note: the fourth component is a bool that indicates if this uses subpixel rendering (0 = no subpixel rendering, >0 = subpixel rendering)
 	pub background_color: [u8; 4],
+	/// Holds the depth that the string will be rendered with (assuming a depth tex is provided)
+	pub depth: u32,
 }
 
 
@@ -137,18 +147,20 @@ pub fn create_text_renderer(
 		Some((atlas_size, atlas_size)),
 		gpu_instance,
 	);
-	//if atlas_tex.wgpu_texture.width() > 65535 {
-	//	bail!(
-	//		"The character atlas cannot be any larger than 65535 (in width or height) but the width is {}, please use a smaller rasterize size.",
-	//		atlas_tex.wgpu_texture.width()
-	//	);
-	//}
-	//if atlas_tex.wgpu_texture.height() > 65535 {
-	//	bail!(
-	//		"The character atlas cannot be any larger than 65535 (in width or height) but the height is {}, please use a smaller rasterize size.",
-	//		atlas_tex.wgpu_texture.height()
-	//	);
-	//}
+
+	// this is needed due to `CharInstanceData::tex_coords` using u16
+	if atlas_tex.wgpu_texture.width() > 65535 {
+		bail!(
+			"The character atlas cannot be any larger than 65535 (in width or height) but the width is {}, please use a smaller rasterize size.",
+			atlas_tex.wgpu_texture.width()
+		);
+	}
+	if atlas_tex.wgpu_texture.height() > 65535 {
+		bail!(
+			"The character atlas cannot be any larger than 65535 (in width or height) but the height is {}, please use a smaller rasterize size.",
+			atlas_tex.wgpu_texture.height()
+		);
+	}
 
 	for (i, (_w, _h, data)) in char_textures.into_iter().enumerate() {
 		let loc = placements[i];
@@ -164,6 +176,7 @@ pub fn create_text_renderer(
 	Ok(TextRenderer {
 		font_data,
 		rasterize_size,
+		shaping_context: ShapeContext::new(),
 
 		atlas_tex,
 		atlas_tex_data,
@@ -184,6 +197,20 @@ pub fn create_text_renderer(
 
 
 
+/// Clears [`TextRenderer::string_datas_buffer`] and [`TextRenderer::string_data_locations`] if they contain more than `max_string_datas` items
+///
+/// Notes:
+/// - This should never be called between [`place_text()`] and [`render_queued_text()`], this should only be called at the very start or (preferably) the very end of the frame.
+/// - If this function is not used, that may be considered a memory leak. However, if you always render text with the same colors and depths, this function may not be needed because the number of stored string datas would not continuously increase.
+pub fn trim_text_renderer(text_renderer: &mut TextRenderer, max_string_datas: u16) {
+	if text_renderer.string_datas_buffer.len() > max_string_datas as usize {
+		text_renderer.string_datas_buffer.clear();
+		text_renderer.string_data_locations.clear();
+	}
+}
+
+
+
 /// Creates a buffer of character instance datas
 #[inline]
 #[must_use]
@@ -196,11 +223,11 @@ pub fn create_characters_buffer(
 
 
 
-/// Processes and queues text to be rendered (reminder: you still have to call [`render_queued_text()`])
+/// Processes and queues text to be rendered (reminder: you still have to call [`sync_buffer()`] on the characters buffer and on [`TextRenderer::string_datas_buffer`] and call [`render_queued_text()`] for the text to be rendered)
 #[allow(unused)]
 pub fn place_text(
 	text: &str,
-	pos: (u32, u32),
+	pos: (i32, i32, u32),
 	size: u32,
 	color: wgpu::Color,
 	characters_buffer: &mut GpuBuffer<CharInstanceData>,
@@ -220,6 +247,7 @@ pub fn place_text(
 			(color.a * 255.0) as u8,
 		],
 		background_color: [0; 4],
+		depth: pos.2,
 	};
 	let string_id = text_renderer.string_data_locations.entry(string_data);
 	let string_id = *string_id.or_insert_with(|| {
@@ -228,15 +256,23 @@ pub fn place_text(
 		id as u32
 	});
 
-	let mut x = pos.0;
-	for c in text.chars() {
-		let tex_coords = if c.is_ascii() {
-			text_renderer.ascii_chars[c as usize].tex_coords
-		} else {
-			todo!()
-		};
-		//characters_buffer.push(CharInstanceData { screen_coords: (), tex_coords, string_id });
-	}
+	let mut shaper = text_renderer
+		.shaping_context
+		.builder(font_ref)
+		.size(size as f32)
+		.build();
+	shaper.add_str(text);
+	//let mut glyph_to_char_mappings = HashMap::new();
+	//for c in text.chars() {
+	//	let glyph_id = font_ref.charmap().map(c);
+	//	glyph_to_char_mappings.insert(glyph_id, c);
+	//}
+	let mut x = 0;
+	shaper.shape_with(|cluster| {
+		for glyph in cluster.glyphs {
+			x += glyph.advance as i32;
+		}
+	});
 }
 
 
@@ -257,8 +293,8 @@ pub fn render_queued_text(
 /// Generates an vdf (vector distance field) texture from an alpha texture. More:
 ///
 /// - The input is expected to be 3 times larger than the output in both dimensions
-/// - The input is `R8Unorm`, where 0 is fully transparent and 1 is fully opaque
-/// - The output is `Rg8Unorm`, which stores the vector from the pixel to the nearest glyph edge
+/// - The input is [`R8Unorm`](wgpu::TextureFormat::R8Unorm), where 0 is fully transparent and 1 is fully opaque
+/// - The output is [`Rg8Unorm`](wgpu::TextureFormat::Rg8Unorm), which stores the vector from the pixel to the nearest glyph edge
 ///   -
 ///   - is (127, 127) if the pixel is inside the glyph
 #[must_use]

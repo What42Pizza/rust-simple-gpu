@@ -1,4 +1,6 @@
 use crate::GpuInstance;
+#[cfg(doc)]
+use crate::vertex_buffer_item_type;
 use std::{
 	marker::PhantomData,
 	ops::{Deref, DerefMut},
@@ -22,8 +24,8 @@ pub const USAGE_INSTANCE_BUFFER: wgpu::BufferUsages = USAGE_VERTEX_BUFFER;
 /// Holds the data for the vertices of a mesh, or the instances of mesh
 ///
 /// Notes:
-/// - This can be automatically dereferenced to its `cpu_buffer` field
-/// - For vertex and instance buffers, consider using [`crate::vertex_buffer_item_type`] for creating the item type
+/// - This can be automatically dereferenced to its [`cpu_copy`](Self::cpu_copy) field
+/// - For vertex and instance buffers, consider using [`vertex_buffer_item_type!()`] for creating the item type
 pub struct GpuBuffer<ItemRawData: bytemuck::Pod> {
 	/// Holds the name of the buffer, only used when reallocating the wgpu buffer
 	pub name: String,
