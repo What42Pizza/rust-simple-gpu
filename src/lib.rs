@@ -155,7 +155,6 @@ pub struct GpuInstance {
 /// # Panics
 ///
 /// This only panics if neither the "glsl" nor "wgsl" features are enabled
-#[inline]
 pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<GpuInstance> {
 	// basics:
 	let wgpu_instance =
@@ -344,8 +343,8 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 
 
 /// Allows you to start rendering a frame by preparing instructions for the gpu
-#[must_use]
 #[inline]
+#[must_use]
 pub fn start_command_encoder(name: &str, gpu_instance: &GpuInstance) -> wgpu::CommandEncoder {
 	gpu_instance
 		.wgpu_device
@@ -379,8 +378,8 @@ pub enum StartFrameResult {
 }
 
 /// Combines [`get_surface_texture()`] and [`start_command_encoder()`] into a single function
-#[must_use]
 #[inline]
+#[must_use]
 pub fn start_frame(
 	name: &str,
 	surface: &WindowSurface,
@@ -409,8 +408,8 @@ pub fn finish_frame(
 
 
 /// Returns the limits (maximum texture sizes, max bindings per group, etc) for the current gpu
-#[must_use]
 #[inline]
+#[must_use]
 pub fn get_gpu_limits(gpu_instance: &GpuInstance) -> wgpu::Limits {
 	gpu_instance.wgpu_device.limits()
 }
@@ -425,6 +424,7 @@ pub struct FpsCounter {
 
 impl FpsCounter {
 	/// Creates a new `FpsCounter`
+	#[inline]
 	#[must_use]
 	pub fn new() -> Self {
 		Self {
@@ -433,6 +433,7 @@ impl FpsCounter {
 		}
 	}
 	/// Notifies the fps counter that a frame has been processed
+	#[inline]
 	pub fn tick(&mut self) {
 		self.count += 1;
 		let current = Instant::now();
@@ -448,6 +449,7 @@ impl FpsCounter {
 }
 
 impl Default for FpsCounter {
+	#[inline]
 	fn default() -> Self {
 		Self::new()
 	}

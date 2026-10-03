@@ -15,7 +15,7 @@ This is a layer over WGPU that is inspired by the simplicity of multimedia libra
 - This is more of a toolbox, where you can choose which functions you will and won't use.
 - This crate is extremely hackable because:
   - All struct fields are public, meaning you still have full control over the state and data.
-  - This sticks very closely to wgpu's type and function calls, allowing you to easily work directly with wgpu wherever needed.
+  - This sticks very closely to wgpu's types and function calls, allowing you to easily work directly with wgpu wherever needed.
   - This is dedicated to the public domain (licensed under CC0), meaning you can copy and tweak this crate's code for your own needs.
 
 ### Workflow / full walkthrough:

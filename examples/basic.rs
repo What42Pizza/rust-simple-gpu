@@ -208,7 +208,7 @@ fn main() -> Result<()> {
 				color: [1.0; 4],
 			},
 		],
-		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+		simple_gpu::USAGE_VERTEX_BUFFER,
 		&gpu_instance,
 	);
 
@@ -216,7 +216,7 @@ fn main() -> Result<()> {
 	let index_buffer = simple_gpu::init_buffer(
 		"main index buffer",
 		[0, 1, 2, 2, 1, 3],
-		wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+		simple_gpu::USAGE_INDEX_BUFFER,
 		&gpu_instance,
 	);
 
@@ -231,7 +231,7 @@ fn main() -> Result<()> {
 				pos: [0.0, 0.0, -3.0],
 			},
 		],
-		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+		simple_gpu::USAGE_INSTANCE_BUFFER,
 		&gpu_instance,
 	);
 

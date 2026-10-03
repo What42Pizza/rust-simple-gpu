@@ -6,6 +6,19 @@ use std::{
 
 
 
+/// The common [`wgpu::BufferUsages`] flags needed for vertex buffers
+pub const USAGE_VERTEX_BUFFER: wgpu::BufferUsages = wgpu::BufferUsages::from_bits_truncate(
+	wgpu::BufferUsages::VERTEX.bits() | wgpu::BufferUsages::COPY_DST.bits(),
+);
+/// The common [`wgpu::BufferUsages`] flags needed for index buffers
+pub const USAGE_INDEX_BUFFER: wgpu::BufferUsages = wgpu::BufferUsages::from_bits_truncate(
+	wgpu::BufferUsages::INDEX.bits() | wgpu::BufferUsages::COPY_DST.bits(),
+);
+/// The common [`wgpu::BufferUsages`] flags needed for instance buffers (which are the same as vertex buffers)
+pub const USAGE_INSTANCE_BUFFER: wgpu::BufferUsages = USAGE_VERTEX_BUFFER;
+
+
+
 /// Holds the data for the vertices of a mesh, or the instances of mesh
 ///
 /// Notes:
@@ -28,21 +41,25 @@ pub struct GpuBuffer<ItemRawData: bytemuck::Pod> {
 
 impl<ItemRawData: bytemuck::Pod> Deref for GpuBuffer<ItemRawData> {
 	type Target = Vec<ItemRawData>;
+	#[inline]
 	fn deref(&self) -> &Self::Target {
 		&self.cpu_copy
 	}
 }
 
 impl<ItemRawData: bytemuck::Pod> DerefMut for GpuBuffer<ItemRawData> {
+	#[inline]
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.cpu_copy
 	}
 }
 
 /// Creates a new vertex buffer (which can also be used for instance datas). Note: the byte size of the resulting wgpu buffer is `count * size_of::<ItemRawData>()`
+#[inline]
+#[must_use]
 pub fn create_buffer<ItemRawData: bytemuck::Pod>(
 	name: impl Into<String>,
-	wgpu_buffer_capacity: u32,
+	initial_buffer_capacity: u32,
 	usages: wgpu::BufferUsages,
 	gpu_instance: &GpuInstance,
 ) -> GpuBuffer<ItemRawData> {
@@ -51,7 +68,7 @@ pub fn create_buffer<ItemRawData: bytemuck::Pod>(
 		.wgpu_device
 		.create_buffer(&wgpu::BufferDescriptor {
 			label: Some(&name),
-			size: u64::from(wgpu_buffer_capacity) * std::mem::size_of::<ItemRawData>() as u64,
+			size: u64::from(initial_buffer_capacity) * std::mem::size_of::<ItemRawData>() as u64,
 			usage: usages,
 			mapped_at_creation: false,
 		});
@@ -60,12 +77,14 @@ pub fn create_buffer<ItemRawData: bytemuck::Pod>(
 		cpu_copy: vec![],
 		wgpu_buffer: buffer,
 		wgpu_buffer_len: 0,
-		wgpu_buffer_capacity,
+		wgpu_buffer_capacity: initial_buffer_capacity,
 		wgpu_usages: usages,
 	}
 }
 
 /// Similar to [`create_buffer()`], but also initializes the buffer with values
+#[inline]
+#[must_use]
 pub fn init_buffer<ItemRawData: bytemuck::Pod>(
 	name: impl Into<String>,
 	items: impl Into<Vec<ItemRawData>>,
@@ -99,6 +118,7 @@ pub fn init_buffer<ItemRawData: bytemuck::Pod>(
 /// Sends the data in a [`GpuBuffer`]'s cpu-side buffer into its wgpu buffer
 ///
 /// Note: the wgpu buffer is automatically reallocated if it is not large enough
+#[inline]
 pub fn sync_buffer<ItemRawData: bytemuck::Pod>(
 	vertex_buffer: &mut GpuBuffer<ItemRawData>,
 	gpu_instance: &GpuInstance,
@@ -218,8 +238,8 @@ pub struct UniformsBuffer<UniformsRawData> {
 }
 
 /// Creates the buffer that stores uniform data
-#[must_use]
 #[inline]
+#[must_use]
 pub fn create_uniforms_buffer<UniformsRawData>(
 	gpu_instance: &GpuInstance,
 ) -> UniformsBuffer<UniformsRawData> {

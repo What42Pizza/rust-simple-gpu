@@ -158,7 +158,7 @@ fn main() -> Result<()> {
 	// font
 	let font_file = std::fs::read_to_string(assets_path.join("font.txt"))?;
 	let font = std::fs::read(assets_path.join(font_file))?;
-	let text_renderer = simple_gpu::create_text_renderer(font, 64, None, &mut gpu_instance)?;
+	let text_renderer = simple_gpu::create_text_renderer(font, 640, None, &mut gpu_instance)?;
 
 	// pipeline
 	let pipeline = simple_gpu::create_2d_pipeline(
@@ -198,7 +198,7 @@ fn main() -> Result<()> {
 				color: [1.0; 4],
 			},
 		],
-		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+		simple_gpu::USAGE_VERTEX_BUFFER,
 		&gpu_instance,
 	);
 
@@ -206,7 +206,7 @@ fn main() -> Result<()> {
 	let index_buffer = simple_gpu::init_buffer(
 		"main index buffer",
 		[0, 1, 2, 2, 1, 3],
-		wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+		simple_gpu::USAGE_INDEX_BUFFER,
 		&gpu_instance,
 	);
 
@@ -216,7 +216,7 @@ fn main() -> Result<()> {
 		[InstanceData {
 			pos: [0.5, 0.5, -2.5],
 		}],
-		wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+		simple_gpu::USAGE_INSTANCE_BUFFER,
 		&gpu_instance,
 	);
 
