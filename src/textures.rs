@@ -30,11 +30,19 @@ pub struct Texture {
 	pub wgpu_mipmap_views: Vec<wgpu::TextureView>,
 	/// Similar to `wgpu_bind_group`, but contains corresponding views from `wgpu_mipmap_view`. This is not needed for most operations and is only used for refilling mipmaps
 	pub wgpu_mipmap_bind_groups: Vec<wgpu::BindGroup>,
-	/// Specifies the format of the texture's texels (aka pixels)
-	pub wgpu_format: wgpu::TextureFormat,
-	/// Specified the number of mip levels this texture contains (must be at least 1)
+	/// Miscellaneous settings that the texture (and its bind groups) was created with
+	pub settings: TextureSettings,
+}
+
+/// Holds the settings that a [`Texture`] was created with
+pub struct TextureSettings {
+	/// The format of the texture's pixels, e.g. [`wgpu::TextureFormat::Rgba8Unorm`]
+	pub pixel_format: wgpu::TextureFormat,
+	/// The filter / sampling mode, with [`wgpu::FilterMode::Linear`] being filtered and [`wgpu::FilterMode::Nearest`] being non-filtered
+	pub filter_mode: wgpu::FilterMode,
+	/// The number of mip levels the texture has, must be at least 1. Also, any `max_mip` values related to this texture are `mip_count - 1`
 	pub mip_count: u32,
-	/// The name of the texture, used for recreating the texture's bind group
+	/// The name given to wgpu during texture creation
 	pub name: String,
 }
 
@@ -135,9 +143,12 @@ pub fn create_texture(
 		wgpu_bind_group: bind_group,
 		wgpu_mipmap_views: mipmap_views,
 		wgpu_mipmap_bind_groups: mipmap_bind_groups,
-		wgpu_format: format,
-		mip_count,
-		name,
+		settings: TextureSettings {
+			pixel_format: format,
+			filter_mode,
+			mip_count,
+			name,
+		},
 	}
 }
 
@@ -240,12 +251,13 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 			bytes_per_row: Some(
 				width
 					* texture
-						.wgpu_format
+						.settings
+						.pixel_format
 						.block_copy_size(None)
 						.unwrap_or_else(|| {
 							panic!(
 								"Failed to get the byte size of the given texture format: {:?}",
-								texture.wgpu_format
+								texture.settings.pixel_format,
 							)
 						}),
 			),
@@ -269,7 +281,7 @@ pub fn set_filter_mode(
 	let new_bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some(&texture.name),
+			label: Some(&texture.settings.name),
 			layout: &gpu_instance.wgpu_texture_bind_group_layout,
 			entries: &[
 				wgpu::BindGroupEntry {
@@ -895,13 +907,13 @@ pub fn refill_mipmaps(
 	command_encoder: &mut wgpu::CommandEncoder,
 	gpu_instance: &mut GpuInstance,
 ) {
-	if texture.mip_count < 2 {
+	if texture.settings.mip_count < 2 {
 		return;
 	}
-	let pipeline = get_mipmap_pipeline(texture.wgpu_format, gpu_instance);
+	let pipeline = get_mipmap_pipeline(texture.settings.pixel_format, gpu_instance);
 	let dont_load = unsafe { wgpu::LoadOpDontCare::enabled() }; // safety: the entire output will be overwritten without blending
 
-	for i in 1..texture.mip_count {
+	for i in 1..texture.settings.mip_count {
 		let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 			label: Some("render_mipmap"),
 			color_attachments: &[Some(wgpu::RenderPassColorAttachment {

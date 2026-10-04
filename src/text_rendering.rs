@@ -360,7 +360,7 @@ pub fn get_glyph_render_data<'a>(
 
 	if needs_resize {
 		text_renderer.atlas_tex = create_texture(
-			&text_renderer.atlas_tex.name,
+			&text_renderer.atlas_tex.settings.name,
 			atlas_tex_size,
 			wgpu::TextureFormat::Rg8Unorm,
 			wgpu::FilterMode::Linear,

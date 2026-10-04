@@ -179,11 +179,11 @@ fn add_to_atlas(
 	);
 	if needs_resize {
 		*atlas_tex = simple_gpu::create_texture(
-			&atlas_tex.name,
+			&atlas_tex.settings.name,
 			atlas_tex_size,
-			atlas_tex.wgpu_format,
-			wgpu::FilterMode::Nearest,
-			atlas_tex.mip_count,
+			atlas_tex.settings.pixel_format,
+			atlas_tex.settings.filter_mode,
+			atlas_tex.settings.mip_count,
 			gpu_instance,
 		)
 	}
