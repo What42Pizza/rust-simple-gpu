@@ -38,11 +38,12 @@ pub struct TextRenderer {
 
 	/// Stores the atlas location, glyph placement, and rasterized vdf (vector distance field) for glyphs
 	pub glyph_render_datas: Vec<(GlyphId, Option<GlyphRenderData>)>,
-
 	/// Holds the gpu buffer for per-string data (text color, flag that enables sub-pixel rendering, etc)
 	pub string_datas_buffer: GpuBuffer<StringData>,
-	/// Holds the locations of each value of [`StringData`] so that strings that use the same rendering settings can share the same string data instance
+	/// Maps a [`StringData`] to its position in [`Self::string_datas_buffer`] (if it already exists there)
 	pub string_data_locations: HashMap<StringData, u32>,
+	///// The pipeline for rendering text
+	//pub wgpu_pipeline: wgpu::RenderPipeline,
 }
 
 /// Contains the data needed to render a character
@@ -57,11 +58,11 @@ pub struct GlyphRenderData {
 	pub vdf_tex_size: (u16, u16),
 }
 
-vertex_buffer_item_type!(Instance, struct CharInstanceData {
-	screen_pos: [i32; 2]  as location 0: Sint32x2,
-	screen_size: [u16; 2] as location 0: Sint16x2,
-	tex_coords: [u16; 4]  as location 1: Uint16x4,
-	string_id: u32        as location 2: Uint32,
+vertex_buffer_item_type!(Instance, struct GlyphInstanceData {
+	pos: [i32; 2]        as location 0: Sint32x2,
+	size: [u16; 2]       as location 0: Sint16x2,
+	tex_coords: [u16; 4] as location 1: Uint16x4,
+	string_id: u32       as location 2: Uint32,
 });
 
 /// Holds the per-string data to render
@@ -183,6 +184,8 @@ pub fn create_text_renderer(
 		glyph_data.vdf_tex_data = data;
 	}
 
+	//let wgpu_pipeline = create_pipeline("text_rendering_pipeline", &[Some(GlyphInstanceData::WGPU_LAYOUT)], , fragment_shader, output_formats, vertex_assembly, depth_stencil, gpu_instance);
+
 	Ok(TextRenderer {
 		font_data,
 		rasterize_size,
@@ -227,7 +230,7 @@ pub fn trim_text_renderer(text_renderer: &mut TextRenderer, max_string_datas: u1
 pub fn create_characters_buffer(
 	name: impl Into<String>,
 	gpu_instance: &mut GpuInstance,
-) -> GpuBuffer<CharInstanceData> {
+) -> GpuBuffer<GlyphInstanceData> {
 	create_buffer(name, 1024, USAGE_VERTEX_BUFFER, gpu_instance)
 }
 
@@ -240,7 +243,7 @@ pub fn place_text(
 	pos: (i32, i32, u32),
 	size: u32,
 	color: wgpu::Color,
-	characters_buffer: &mut GpuBuffer<CharInstanceData>,
+	characters_buffer: &mut GpuBuffer<GlyphInstanceData>,
 	text_renderer: &mut TextRenderer,
 	gpu_instance: &mut GpuInstance,
 ) {
@@ -287,9 +290,12 @@ pub fn place_text(
 		let Some(glyph_render_data) = glyph_render_data else {
 			continue;
 		};
-		let char_instance = CharInstanceData {
-			screen_pos: [pos.0 + total_advance, pos.1],
-			screen_size: glyph_render_data.vdf_tex_size.into(),
+		let char_instance = GlyphInstanceData {
+			pos: [
+				pos.0 + total_advance - glyph_render_data.glyph_offset.0 as i32,
+				pos.1 - glyph_render_data.glyph_offset.1 as i32,
+			],
+			size: glyph_render_data.vdf_tex_size.into(),
 			tex_coords: glyph_render_data.tex_coords,
 			string_id,
 		};
@@ -400,11 +406,12 @@ pub fn get_glyph_render_data<'a>(
 /// Renders queued text using an existing render pass
 #[allow(unused)]
 pub fn render_queued_text(
-	characters_buffer: &GpuBuffer<CharInstanceData>,
-	render_pass: &wgpu::RenderPass,
+	characters_buffer: &GpuBuffer<GlyphInstanceData>,
+	render_pass: &mut wgpu::RenderPass,
 	text_renderer: &TextRenderer,
 	gpu_instance: &mut GpuInstance,
 ) {
+	//render(&mut render_pass, pipeline, vertex_buffers, index_buffer, textures, vertex_count, instance_count);
 	todo!();
 }
 

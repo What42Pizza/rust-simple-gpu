@@ -952,13 +952,13 @@ pub fn get_mipmap_pipeline(
 				label: Some("mipmap_pipeline"),
 				layout: Some(&gpu_instance.wgpu_mipmap_pipeline_layout),
 				vertex: wgpu::VertexState {
-					module: &gpu_instance.wgpu_full_quad_vertex_shader,
+					module: gpu_instance.wgpu_mipmap_shaders.vertex(),
 					entry_point: None,
 					buffers: &[],
 					compilation_options: wgpu::PipelineCompilationOptions::default(),
 				},
 				fragment: Some(wgpu::FragmentState {
-					module: &gpu_instance.wgpu_mipmap_fragment_shader,
+					module: gpu_instance.wgpu_mipmap_shaders.fragment(),
 					entry_point: None,
 					targets: &[Some(wgpu::ColorTargetState {
 						format: texture_format,

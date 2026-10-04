@@ -20,8 +20,7 @@
 //! - Create a [`GpuInstance`] with [`init()`]
 //! - Get a window's surface with [`get_window_surface_mut()`]
 //! - Load shaders with:
-//!   - [`load_glsl_vertex_shader()`] (requires the "glsl" feature, enabled by default)
-//!   - [`load_glsl_fragment_shader()`] (requires the "glsl" feature, enabled by default)
+//!   - [`load_glsl_shaders()`] (requires the "glsl" feature, enabled by default)
 //!   - [`load_wgsl_shader()`] (requires the "wgsl" feature)
 //! - Load textures with:
 //!   - [`load_texture_from_path()`] (requires the "image" feature, enabled by default)
@@ -136,10 +135,8 @@ pub struct GpuInstance {
 	/// - Bind group 0 binding 1: texture sampler
 	pub wgpu_mipmap_pipeline_layout: wgpu::PipelineLayout,
 
-	/// This is the vertex shader used for mipmap generation, and all it does it place 4 vertices at the 4 corners of the screen
-	pub wgpu_full_quad_vertex_shader: wgpu::ShaderModule,
-	/// This is the fragment shader used for mipmap generation
-	pub wgpu_mipmap_fragment_shader: wgpu::ShaderModule,
+	/// These are the shaders used for mipmap generation
+	pub wgpu_mipmap_shaders: Shaders,
 	/// This is the pipeline used for mipmap generation
 	pub wgpu_mipmap_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
 }
@@ -275,7 +272,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 			],
 		});
 
-	// pipeline layouts:
+	// mipmap pipeline layouts:
 	let mipmap_pipeline_layout =
 		wgpu_device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("mipmap_pipeline_layout"),
@@ -283,36 +280,40 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 			immediate_size: 0,
 		});
 
-	// shaders:
+	// mipmap shaders:
 	#[cfg(feature = "glsl")]
-	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
-		label: Some("mipmap_vertex_shader"),
-		source: wgpu::ShaderSource::Glsl {
-			shader: include_str!("mipmap_shaders/vertex.glsl").into(),
-			stage: wgpu::naga::ShaderStage::Vertex,
-			defines: &[],
-		},
-	});
+	let mipmap_shaders = {
+		let vsh = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("mipmap_vertex_shader"),
+			source: wgpu::ShaderSource::Glsl {
+				shader: include_str!("mipmap_shaders/vertex.glsl").into(),
+				stage: wgpu::naga::ShaderStage::Vertex,
+				defines: &[],
+			},
+		});
+		let fsh = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("mipmap_fragment_shader"),
+			source: wgpu::ShaderSource::Glsl {
+				shader: include_str!("mipmap_shaders/fragment.glsl").into(),
+				stage: wgpu::naga::ShaderStage::Fragment,
+				defines: &[],
+			},
+		});
+		Shaders::Separate {
+			vertex: vsh,
+			fragment: fsh,
+		}
+	};
 	#[cfg(all(feature = "wgsl", not(feature = "glsl")))]
-	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
-		label: Some("mipmap_vertex_shader"),
-		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
-	});
-
-	#[cfg(feature = "glsl")]
-	let mipmap_fragment_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
-		label: Some("mipmap_fragment_shader"),
-		source: wgpu::ShaderSource::Glsl {
-			shader: include_str!("mipmap_shaders/fragment.glsl").into(),
-			stage: wgpu::naga::ShaderStage::Fragment,
-			defines: &[],
-		},
-	});
-	#[cfg(all(feature = "wgsl", not(feature = "glsl")))]
-	let mipmap_vertex_shader = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
-		label: Some("mipmap_fragment_shader"),
-		source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
-	});
+	let mipmap_shaders = {
+		let mipmap_shaders = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("mipmap_combined_shader"),
+			source: wgpu::ShaderSource::Wgsl(include_str!("mipmap_shaders/full.wgsl").into()),
+		});
+		Shaders::Combined {
+			both: mipmap_shaders,
+		}
+	};
 
 	#[cfg(not(any(feature = "glsl", feature = "wgsl")))]
 	compile_error!("Either the \"glsl\" or \"wgsl\" features must be enabled!");
@@ -334,8 +335,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		wgpu_pipeline_layouts: vec![],
 		wgpu_mipmap_pipeline_layout: mipmap_pipeline_layout,
 
-		wgpu_full_quad_vertex_shader: mipmap_vertex_shader,
-		wgpu_mipmap_fragment_shader: mipmap_fragment_shader,
+		wgpu_mipmap_shaders: mipmap_shaders,
 		wgpu_mipmap_pipelines: HashMap::new(),
 	})
 }

@@ -1,4 +1,4 @@
-use crate::{GpuBuffer, GpuInstance};
+use crate::{GpuBuffer, GpuInstance, Shaders};
 
 
 
@@ -38,16 +38,14 @@ pub fn get_pipeline_layout<'a>(
 pub fn create_2d_pipeline(
 	name: &str,
 	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
-	vertex_shader: &wgpu::ShaderModule,
-	fragment_shader: &wgpu::ShaderModule,
+	shaders: &Shaders,
 	output_formats: &[wgpu::TextureFormat],
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
 	create_pipeline(
 		name,
 		vertex_buffer_layouts,
-		vertex_shader,
-		fragment_shader,
+		shaders,
 		output_formats,
 		wgpu::PrimitiveState::default(),
 		None,
@@ -65,16 +63,14 @@ pub fn create_2d_pipeline(
 pub fn create_3d_pipeline(
 	name: &str,
 	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
-	vertex_shader: &wgpu::ShaderModule,
-	fragment_shader: &wgpu::ShaderModule,
+	shaders: &Shaders,
 	output_formats: &[wgpu::TextureFormat],
 	gpu_instance: &mut GpuInstance,
 ) -> wgpu::RenderPipeline {
 	create_pipeline(
 		name,
 		vertex_buffer_layouts,
-		vertex_shader,
-		fragment_shader,
+		shaders,
 		output_formats,
 		wgpu::PrimitiveState {
 			topology: wgpu::PrimitiveTopology::TriangleList,
@@ -105,8 +101,7 @@ pub fn create_3d_pipeline(
 pub fn create_pipeline(
 	name: &str,
 	vertex_buffer_layouts: &[Option<wgpu::VertexBufferLayout>],
-	vertex_shader: &wgpu::ShaderModule,
-	fragment_shader: &wgpu::ShaderModule,
+	shaders: &Shaders,
 	output_formats: &[wgpu::TextureFormat],
 	vertex_assembly: wgpu::PrimitiveState,
 	depth_stencil: Option<wgpu::DepthStencilState>,
@@ -137,13 +132,13 @@ pub fn create_pipeline(
 			label: Some(name),
 			layout: Some(pipeline_layout),
 			vertex: wgpu::VertexState {
-				module: vertex_shader,
+				module: shaders.vertex(),
 				entry_point: None,
 				buffers: &vertex_buffer_layouts,
 				compilation_options: wgpu::PipelineCompilationOptions::default(),
 			},
 			fragment: Some(wgpu::FragmentState {
-				module: fragment_shader,
+				module: shaders.fragment(),
 				entry_point: None,
 				targets: &targets,
 				compilation_options: wgpu::PipelineCompilationOptions::default(),

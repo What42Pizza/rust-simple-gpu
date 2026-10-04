@@ -138,10 +138,12 @@ fn main() -> Result<()> {
 
 	// shaders
 	let shaders_path = assets_path.join("shaders");
-	let main_vertex_shader =
-		simple_gpu::load_glsl_vertex_shader(&shaders_path.join("text.vsh"), &gpu_instance, &[])?;
-	let main_fragment_shader =
-		simple_gpu::load_glsl_fragment_shader(&shaders_path.join("text.fsh"), &gpu_instance, &[])?;
+	let main_shader = simple_gpu::load_glsl_shaders(
+		shaders_path.join("text.vsh"),
+		shaders_path.join("text.fsh"),
+		&gpu_instance,
+		&[],
+	)?;
 
 	// uniforms
 	let uniforms_buffer = simple_gpu::create_uniforms_buffer::<UniformsRawData>(&gpu_instance);
@@ -167,8 +169,7 @@ fn main() -> Result<()> {
 			Some(VertexData::WGPU_LAYOUT),
 			Some(InstanceData::WGPU_LAYOUT),
 		],
-		&main_vertex_shader,
-		&main_fragment_shader,
+		&main_shader,
 		&[window_surface.wgpu_format],
 		&mut gpu_instance,
 	);
