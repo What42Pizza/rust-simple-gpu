@@ -6,9 +6,9 @@ use crate::{
 	update_texture, vertex_buffer_item_type,
 };
 use anyhow::{Result, bail};
-use std::{array::from_fn, collections::HashMap};
+use std::collections::HashMap;
 use swash::{
-	CacheKey, FontRef,
+	CacheKey, FontRef, GlyphId,
 	scale::{Render, ScaleContext, Source, StrikeWith},
 	shape::ShapeContext,
 	zeno::Format,
@@ -36,10 +36,8 @@ pub struct TextRenderer {
 	/// This is the allocator used for placing characters into the atlas
 	pub atlas_allocator: AtlasAllocator,
 
-	/// Stores the atlas location, glyph placement, and rasterized vdf (vector distance field) for ascii characters
-	pub ascii_chars: [CharRenderData; (b'~' - b'!' + 1) as usize],
-	/// Stores the atlas location, glyph placement, and rasterized vdf (vector distance field) for non-ascii characters
-	pub non_asci_chars: HashMap<char, CharRenderData>,
+	/// Stores the atlas location, glyph placement, and rasterized vdf (vector distance field) for glyphs
+	pub glyph_render_datas: Vec<(GlyphId, Option<GlyphRenderData>)>,
 
 	/// Holds the gpu buffer for per-string data (text color, flag that enables sub-pixel rendering, etc)
 	pub string_datas_buffer: GpuBuffer<StringData>,
@@ -48,13 +46,15 @@ pub struct TextRenderer {
 }
 
 /// Contains the data needed to render a character
-pub struct CharRenderData {
+pub struct GlyphRenderData {
 	/// This is the location of the character's vdf texture within the text renderer's texture atlas (x1, y1, x2, y2)
 	pub tex_coords: [u16; 4],
 	/// Defines the placement of the glyph within the vdf texture
 	pub glyph_offset: (u32, u32),
 	/// This is the raw data of the character's vdf texture, used if the character atlas needs to be recreated
 	pub vdf_tex_data: Vec<u8>,
+	/// This is the width and height of `vdf_tex_data`
+	pub vdf_tex_size: (u16, u16),
 }
 
 vertex_buffer_item_type!(Instance, struct CharInstanceData {
@@ -114,26 +114,32 @@ pub fn create_text_renderer(
 	let atlas_size = atlas_size.min(max_atlas_size);
 
 	let mut char_textures = vec![];
-	let mut ascii_chars = from_fn(|i| {
-		let c = (i as u8 + b'!') as char;
-		let glyph_id = font_ref.charmap().map(c);
-		let mut bitmap = Render::new(&[Source::Outline, Source::Bitmap(StrikeWith::BestFit)])
-			.format(Format::Alpha)
-			.render(&mut font_scaler, glyph_id)
-			.expect("Failed to render glyph for character");
-		let data = generate_vdf(&bitmap.data, bitmap.placement.width);
-		bitmap.placement.width = (bitmap.placement.width) / 3 + 4;
-		bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
-		bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
-		bitmap.placement.top = (bitmap.placement.top + 1) / 3 + 2;
-		char_textures.push((bitmap.placement.width, bitmap.placement.height, data));
-		let glyph_offset = (bitmap.placement.left as u32, bitmap.placement.top as u32);
-		CharRenderData {
-			tex_coords: [0; 4],
-			glyph_offset,
-			vdf_tex_data: vec![],
-		}
-	});
+	let mut glyph_render_datas = (b'!'..=b'~')
+		.map(|c| {
+			let glyph_id = font_ref.charmap().map(c);
+			let mut bitmap = Render::new(&[Source::Outline, Source::Bitmap(StrikeWith::BestFit)])
+				.format(Format::Alpha)
+				.render(&mut font_scaler, glyph_id)
+				.expect("Failed to render glyph for character");
+			let data = generate_vdf(&bitmap.data, bitmap.placement.width);
+			bitmap.placement.width = (bitmap.placement.width) / 3 + 4;
+			bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
+			bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
+			bitmap.placement.top = (bitmap.placement.top + 1) / 3 + 2;
+			char_textures.push((bitmap.placement.width, bitmap.placement.height, data));
+			let glyph_offset = (bitmap.placement.left as u32, bitmap.placement.top as u32);
+			let glyph_data = GlyphRenderData {
+				tex_coords: [0; 4],
+				glyph_offset,
+				vdf_tex_data: vec![],
+				vdf_tex_size: (
+					bitmap.placement.width as u16,
+					bitmap.placement.height as u16,
+				),
+			};
+			(glyph_id, Some(glyph_data))
+		})
+		.collect::<Vec<_>>();
 
 	let CreatedAtlasResult {
 		placements,
@@ -167,13 +173,14 @@ pub fn create_text_renderer(
 
 	for (i, (_w, _h, data)) in char_textures.into_iter().enumerate() {
 		let loc = placements[i];
-		ascii_chars[i].tex_coords = [
+		let glyph_data = glyph_render_datas[i].1.as_mut().unwrap();
+		glyph_data.tex_coords = [
 			loc.pos.0 as u16,
 			loc.pos.1 as u16,
 			(loc.pos.0 + loc.size.0) as u16,
 			(loc.pos.1 + loc.size.1) as u16,
 		];
-		ascii_chars[i].vdf_tex_data = data;
+		glyph_data.vdf_tex_data = data;
 	}
 
 	Ok(TextRenderer {
@@ -186,8 +193,7 @@ pub fn create_text_renderer(
 		atlas_allocator,
 		atlas_tex_is_dirty: false,
 
-		ascii_chars,
-		non_asci_chars: HashMap::new(),
+		glyph_render_datas,
 
 		string_datas_buffer: create_buffer(
 			"string_datas_buffer",
@@ -236,6 +242,7 @@ pub fn place_text(
 	color: wgpu::Color,
 	characters_buffer: &mut GpuBuffer<CharInstanceData>,
 	text_renderer: &mut TextRenderer,
+	gpu_instance: &mut GpuInstance,
 ) {
 	let font_ref = FontRef {
 		data: &text_renderer.font_data,
@@ -266,48 +273,51 @@ pub fn place_text(
 		.size(size as f32)
 		.build();
 	shaper.add_str(text);
-	//let mut glyph_to_char_mappings = HashMap::new();
-	//for c in text.chars() {
-	//	let glyph_id = font_ref.charmap().map(c);
-	//	glyph_to_char_mappings.insert(glyph_id, c);
-	//}
-	let mut x = pos.0;
+
+	let mut glyph_to_place = Vec::with_capacity(text.len());
 	shaper.shape_with(|cluster| {
 		for glyph in cluster.glyphs {
-			x += glyph.advance as i32;
+			glyph_to_place.push(*glyph);
 		}
 	});
-}
 
-
-
-/// Gets the [`CharRenderData`] for a given character, and generates and populates the data for characters which have not had their vdf texture generated yet
-pub fn get_char_render_data<'a>(
-	c: char,
-	text_renderer: &'a mut TextRenderer,
-	gpu_instance: &mut GpuInstance,
-) -> &'a CharRenderData {
-	if c.is_ascii() {
-		&text_renderer.ascii_chars[c as usize]
-	} else if let Some(char_data) = text_renderer.non_asci_chars.get(&c) {
-		char_data
-	} else {
-		let char_data = generate_char_render_data(c, text_renderer, gpu_instance);
-		text_renderer.non_asci_chars.insert(c, char_data);
-		&text_renderer.non_asci_chars[&c]
+	let mut total_advance = pos.0;
+	for glyph in glyph_to_place {
+		let glyph_render_data = get_glyph_render_data(glyph.id, text_renderer, gpu_instance);
+		let Some(glyph_render_data) = glyph_render_data else {
+			continue;
+		};
+		let char_instance = CharInstanceData {
+			screen_pos: [pos.0 + total_advance, pos.1],
+			screen_size: glyph_render_data.vdf_tex_size.into(),
+			tex_coords: glyph_render_data.tex_coords,
+			string_id,
+		};
+		characters_buffer.push(char_instance);
+		total_advance += glyph.advance as i32;
 	}
 }
 
-/// Generates the [`CharRenderData`] for a given non-ascii character (because all ascii characters are guaranteed to be generated when [`TextRenderer`] is created)
+
+
+/// Get the [`GlyphRenderData`] for a given glyph, and if the data doesn't exist yet, it generates it and adds it to the [`TextRenderer`]
 ///
 /// # Panics
 ///
 /// This panics if it a glyph fails to render
-pub fn generate_char_render_data(
-	c: char,
-	text_renderer: &mut TextRenderer,
+pub fn get_glyph_render_data<'a>(
+	glyph_id: GlyphId,
+	text_renderer: &'a mut TextRenderer,
 	gpu_instance: &mut GpuInstance,
-) -> CharRenderData {
+) -> &'a Option<GlyphRenderData> {
+	let insert_i = match text_renderer
+		.glyph_render_datas
+		.binary_search_by_key(&glyph_id, |(id, _data)| *id)
+	{
+		Ok(i) => return &text_renderer.glyph_render_datas[i].1,
+		Err(i) => i,
+	};
+
 	let font_ref = FontRef {
 		data: &text_renderer.font_data,
 		offset: 0,
@@ -320,11 +330,17 @@ pub fn generate_char_render_data(
 		.hint(true)
 		.build();
 
-	let glyph_id = font_ref.charmap().map(c);
 	let mut bitmap = Render::new(&[Source::Outline, Source::Bitmap(StrikeWith::BestFit)])
 		.format(Format::Alpha)
 		.render(&mut font_scaler, glyph_id)
 		.expect("Failed to render glyph for character");
+	if bitmap.placement.width == 0 || bitmap.placement.height == 0 {
+		text_renderer
+			.glyph_render_datas
+			.insert(insert_i, (glyph_id, None));
+		return &text_renderer.glyph_render_datas[insert_i].1;
+	}
+
 	let data = generate_vdf(&bitmap.data, bitmap.placement.width);
 	bitmap.placement.width = (bitmap.placement.width) / 3 + 4;
 	bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
@@ -358,7 +374,7 @@ pub fn generate_char_render_data(
 		gpu_instance,
 	);
 
-	CharRenderData {
+	let glyph_render_data = GlyphRenderData {
 		tex_coords: [
 			loc.pos.0 as u16,
 			loc.pos.1 as u16,
@@ -367,7 +383,16 @@ pub fn generate_char_render_data(
 		],
 		glyph_offset,
 		vdf_tex_data: data,
-	}
+		vdf_tex_size: (
+			bitmap.placement.width as u16,
+			bitmap.placement.height as u16,
+		),
+	};
+
+	text_renderer
+		.glyph_render_datas
+		.insert(insert_i, (glyph_id, Some(glyph_render_data)));
+	&text_renderer.glyph_render_datas[insert_i].1
 }
 
 

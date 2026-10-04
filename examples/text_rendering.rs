@@ -253,6 +253,7 @@ fn main() -> Result<()> {
 		wgpu::Color::BLACK,
 		&mut char_buf,
 		&mut data.text_renderer,
+		&mut gpu_instance,
 	);
 	panic!();
 
