@@ -60,11 +60,8 @@ struct ProgramData {
 	camera: CameraData,
 	aspect_ratio: f32,
 
-	pipeline: wgpu::RenderPipeline,
-	vertex_buffer: simple_gpu::GpuBuffer<VertexData>,
-	index_buffer: simple_gpu::GpuBuffer<u16>,
-	instance_buffer: simple_gpu::GpuBuffer<InstanceData>,
 	text_renderer: simple_gpu::TextRenderer,
+	depth_tex: simple_gpu::DepthTexture,
 
 	uniforms_buffer: simple_gpu::UniformsBuffer<UniformsRawData>,
 }
@@ -162,65 +159,6 @@ fn main() -> Result<()> {
 	let font = std::fs::read(assets_path.join(font_file))?;
 	let text_renderer = simple_gpu::create_text_renderer(font, 64, None, &mut gpu_instance)?;
 
-	// pipeline
-	let pipeline = simple_gpu::create_2d_pipeline(
-		"main pipeline",
-		&[
-			Some(VertexData::WGPU_LAYOUT),
-			Some(InstanceData::WGPU_LAYOUT),
-		],
-		&main_shader,
-		&[window_surface.wgpu_format],
-		&mut gpu_instance,
-	);
-
-	// vertex data
-	let vertex_buffer = simple_gpu::init_buffer(
-		"main vertex buffer",
-		[
-			VertexData {
-				pos: [1.0, 1.0, 0.0],
-				uv: [1.0, 0.0],
-				color: [1.0; 4],
-			},
-			VertexData {
-				pos: [-1.0, 1.0, 0.0],
-				uv: [0.0, 0.0],
-				color: [1.0; 4],
-			},
-			VertexData {
-				pos: [1.0, -1.0, 0.0],
-				uv: [1.0, 1.0],
-				color: [1.0; 4],
-			},
-			VertexData {
-				pos: [-1.0, -1.0, 0.0],
-				uv: [0.0, 1.0],
-				color: [1.0; 4],
-			},
-		],
-		simple_gpu::USAGE_VERTEX_BUFFER,
-		&gpu_instance,
-	);
-
-	// index data
-	let index_buffer = simple_gpu::init_buffer(
-		"main index buffer",
-		[0, 1, 2, 2, 1, 3],
-		simple_gpu::USAGE_INDEX_BUFFER,
-		&gpu_instance,
-	);
-
-	// instance data
-	let instance_buffer = simple_gpu::init_buffer(
-		"main instance buffer",
-		[InstanceData {
-			pos: [0.5, 0.5, -2.5],
-		}],
-		simple_gpu::USAGE_INSTANCE_BUFFER,
-		&gpu_instance,
-	);
-
 	// assemble program's data
 	let mut data = ProgramData {
 		should_quit: false,
@@ -237,11 +175,8 @@ fn main() -> Result<()> {
 		},
 		aspect_ratio: window_size.0 as f32 / window_size.1 as f32,
 
-		pipeline,
-		vertex_buffer,
-		index_buffer,
-		instance_buffer,
 		text_renderer,
+		depth_tex,
 
 		uniforms_buffer,
 	};
@@ -256,7 +191,6 @@ fn main() -> Result<()> {
 		&mut data.text_renderer,
 		&mut gpu_instance,
 	);
-	panic!();
 
 
 
@@ -285,6 +219,12 @@ fn main() -> Result<()> {
 						(new_width as u32, new_height as u32),
 					);
 					data.aspect_ratio = new_width as f32 / new_height as f32;
+					data.depth_tex = simple_gpu::create_depth_texture(
+						"main depth tex",
+						(new_width as u32, new_height as u32),
+						wgpu::FilterMode::Linear,
+						&gpu_instance,
+					);
 				}
 				Event::Quit { .. }
 				| Event::Window {
@@ -354,33 +294,38 @@ fn main() -> Result<()> {
 				simple_gpu::StartFrameResult::Some(tex, view, commands) => (tex, view, commands),
 				simple_gpu::StartFrameResult::None => continue,
 				simple_gpu::StartFrameResult::Error => {
+					let (new_width, new_height) = window.size();
 					simple_gpu::reconfigure_window_surface(
 						&mut window_surface,
 						&gpu_instance,
-						window.size(),
+						(new_width, new_height),
+					);
+					data.aspect_ratio = new_width as f32 / new_height as f32;
+					data.depth_tex = simple_gpu::create_depth_texture(
+						"main depth tex",
+						(new_width, new_height),
+						wgpu::FilterMode::Linear,
+						&gpu_instance,
 					);
 					continue;
 				}
 			};
 
-		let mut render_pass = simple_gpu::start_2d_render_pass(
+		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
 			&data.uniforms_buffer.wgpu_bind_group,
 			&[(&surface_tex_view, Some(wgpu::Color::WHITE))],
+			&data.depth_tex.wgpu_view,
+			true,
 			&mut command_encoder,
 		);
 
-		simple_gpu::render(
+		simple_gpu::render_queued_text(
+			&char_buf,
 			&mut render_pass,
-			&data.pipeline,
-			&[
-				&data.vertex_buffer.wgpu_buffer,
-				&data.instance_buffer.wgpu_buffer,
-			],
-			Some(&data.index_buffer),
-			&[&data.text_renderer.atlas_tex.wgpu_bind_group],
-			data.vertex_buffer.wgpu_buffer_len,
-			data.instance_buffer.wgpu_buffer_len,
+			window_surface.wgpu_format,
+			&data.text_renderer,
+			&mut gpu_instance,
 		);
 
 		simple_gpu::finish_render_pass(render_pass);

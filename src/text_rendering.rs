@@ -42,8 +42,9 @@ pub struct TextRenderer {
 	pub string_datas_buffer: GpuBuffer<StringData>,
 	/// Maps a [`StringData`] to its position in [`Self::string_datas_buffer`] (if it already exists there)
 	pub string_data_locations: HashMap<StringData, u32>,
-	///// The pipeline for rendering text
-	//pub wgpu_pipeline: wgpu::RenderPipeline,
+
+	/// The bind group for the text rendering pipeline
+	pub wgpu_bind_group: wgpu::BindGroup,
 }
 
 /// Contains the data needed to render a character
@@ -60,9 +61,9 @@ pub struct GlyphRenderData {
 
 vertex_buffer_item_type!(Instance, struct GlyphInstanceData {
 	pos: [i32; 2]        as location 0: Sint32x2,
-	size: [u16; 2]       as location 0: Sint16x2,
-	tex_coords: [u16; 4] as location 1: Uint16x4,
-	string_id: u32       as location 2: Uint32,
+	size: [u16; 2]       as location 1: Sint16x2,
+	tex_coords: [u16; 4] as location 2: Uint16x4,
+	string_id: u32       as location 3: Uint32,
 });
 
 /// Holds the per-string data to render
@@ -184,7 +185,35 @@ pub fn create_text_renderer(
 		glyph_data.vdf_tex_data = data;
 	}
 
-	//let wgpu_pipeline = create_pipeline("text_rendering_pipeline", &[Some(GlyphInstanceData::WGPU_LAYOUT)], , fragment_shader, output_formats, vertex_assembly, depth_stencil, gpu_instance);
+	let string_datas_buffer = create_buffer(
+		"string_datas_buffer",
+		1024,
+		wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+		gpu_instance,
+	);
+
+	let bind_group = gpu_instance
+		.wgpu_device
+		.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("text_rendering_bind_group"),
+			layout: &gpu_instance.wgpu_text_bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(&atlas_tex.wgpu_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_linear_sampler),
+				},
+				wgpu::BindGroupEntry {
+					binding: 2,
+					resource: wgpu::BindingResource::Buffer(
+						string_datas_buffer.wgpu_buffer.as_entire_buffer_binding(),
+					),
+				},
+			],
+		});
 
 	Ok(TextRenderer {
 		font_data,
@@ -198,13 +227,9 @@ pub fn create_text_renderer(
 
 		glyph_render_datas,
 
-		string_datas_buffer: create_buffer(
-			"string_datas_buffer",
-			1024,
-			wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-			gpu_instance,
-		),
+		string_datas_buffer,
 		string_data_locations: HashMap::new(),
+		wgpu_bind_group: bind_group,
 	})
 }
 
@@ -215,11 +240,70 @@ pub fn create_text_renderer(
 /// Notes:
 /// - This should never be called between [`place_text()`] and [`render_queued_text()`], this should only be called at the very start or (preferably) the very end of the frame.
 /// - If this function is not used, that may be considered a memory leak. However, if you always render text with the same colors and depths, this function may not be needed because the number of stored string datas would not continuously increase.
+#[inline]
 pub fn trim_text_renderer(text_renderer: &mut TextRenderer, max_string_datas: u16) {
 	if text_renderer.string_datas_buffer.len() > max_string_datas as usize {
 		text_renderer.string_datas_buffer.clear();
 		text_renderer.string_data_locations.clear();
 	}
+}
+
+/// Returns the pipeline needed for rendering text with a given output texture format
+#[inline]
+#[must_use]
+pub fn get_text_rendering_pipeline(
+	output_format: wgpu::TextureFormat,
+	gpu_instance: &mut GpuInstance,
+) -> &wgpu::RenderPipeline {
+	if let Some(pipeline) = gpu_instance.wgpu_text_pipelines.get(&output_format) {
+		return pipeline;
+	}
+	let pipeline =
+		gpu_instance
+			.wgpu_device
+			.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+				label: Some("text_rendering_pipeline"),
+				layout: Some(&gpu_instance.wgpu_text_pipeline_layout),
+				vertex: wgpu::VertexState {
+					module: gpu_instance.wgpu_text_shaders.vertex(),
+					entry_point: None,
+					buffers: &[GlyphInstanceData::WGPU_LAYOUT],
+					compilation_options: wgpu::PipelineCompilationOptions::default(),
+				},
+				fragment: Some(wgpu::FragmentState {
+					module: gpu_instance.wgpu_text_shaders.fragment(),
+					entry_point: None,
+					targets: &[Some(wgpu::ColorTargetState {
+						format: output_format,
+						blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+						write_mask: wgpu::ColorWrites::ALL,
+					})],
+					compilation_options: wgpu::PipelineCompilationOptions::default(),
+				}),
+				primitive: wgpu::PrimitiveState {
+					topology: wgpu::PrimitiveTopology::TriangleStrip,
+					strip_index_format: None,
+					front_face: wgpu::FrontFace::default(),
+					cull_mode: None,
+					polygon_mode: wgpu::PolygonMode::Fill,
+					unclipped_depth: false,
+					conservative: false,
+				},
+				depth_stencil: Some(wgpu::DepthStencilState {
+					format: wgpu::TextureFormat::Depth24Plus,
+					depth_write_enabled: Some(true),
+					depth_compare: Some(wgpu::CompareFunction::Less),
+					stencil: wgpu::StencilState::default(),
+					bias: wgpu::DepthBiasState::default(),
+				}),
+				multisample: wgpu::MultisampleState::default(),
+				multiview_mask: None,
+				cache: None,
+			});
+	gpu_instance
+		.wgpu_text_pipelines
+		.insert(output_format, pipeline);
+	&gpu_instance.wgpu_text_pipelines[&output_format]
 }
 
 
@@ -404,15 +488,20 @@ pub fn get_glyph_render_data<'a>(
 
 
 /// Renders queued text using an existing render pass
-#[allow(unused)]
+#[inline]
 pub fn render_queued_text(
 	characters_buffer: &GpuBuffer<GlyphInstanceData>,
 	render_pass: &mut wgpu::RenderPass,
+	output_format: wgpu::TextureFormat,
 	text_renderer: &TextRenderer,
 	gpu_instance: &mut GpuInstance,
 ) {
-	//render(&mut render_pass, pipeline, vertex_buffers, index_buffer, textures, vertex_count, instance_count);
-	todo!();
+	let pipeline = get_text_rendering_pipeline(output_format, gpu_instance);
+
+	render_pass.set_pipeline(pipeline);
+	render_pass.set_bind_group(0, &text_renderer.wgpu_bind_group, &[]);
+	render_pass.set_vertex_buffer(0, characters_buffer.wgpu_buffer.slice(..));
+	render_pass.draw(0..4, 0..characters_buffer.wgpu_buffer_len);
 }
 
 

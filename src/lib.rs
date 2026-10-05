@@ -139,6 +139,19 @@ pub struct GpuInstance {
 	pub wgpu_mipmap_shaders: Shaders,
 	/// This is the pipeline used for mipmap generation
 	pub wgpu_mipmap_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
+
+	/// The layout for the text render wgpu pipeline's bind groups
+	#[cfg(feature = "text")]
+	pub wgpu_text_bind_group_layout: wgpu::BindGroupLayout,
+	/// The layout for the text render wgpu pipelines
+	#[cfg(feature = "text")]
+	pub wgpu_text_pipeline_layout: wgpu::PipelineLayout,
+	/// The pipelines for rendering text
+	#[cfg(feature = "text")]
+	pub wgpu_text_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
+	/// The shaders for rendering text
+	#[cfg(feature = "text")]
+	pub wgpu_text_shaders: Shaders,
 }
 
 
@@ -181,7 +194,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		&wgpu_device,
 	);
 
-	// bind group layoutsS:
+	// bind group layouts:
 	let uniforms_bind_group_layout =
 		wgpu_device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("uniforms_bind_group_layout"),
@@ -315,6 +328,84 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 		}
 	};
 
+	#[cfg(feature = "text")]
+	let text_bind_group_layout =
+		wgpu_device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			label: Some("text_rendering_bind_group_layout"),
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					// texture
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					// sampler
+					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					// string data storage
+					binding: 2,
+					visibility: wgpu::ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Storage { read_only: true },
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+			],
+		});
+
+	#[cfg(feature = "text")]
+	let text_pipeline_layout =
+		wgpu_device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+			label: Some("text_pipeline_layout"),
+			bind_group_layouts: &[Some(&text_bind_group_layout)],
+			immediate_size: 0,
+		});
+
+	// text shaders:
+	#[cfg(all(feature = "text", feature = "glsl"))]
+	let text_shaders = {
+		let vsh = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("text_rendering_vertex_shader"),
+			source: wgpu::ShaderSource::Glsl {
+				shader: include_str!("text_shaders/vertex.glsl").into(),
+				stage: wgpu::naga::ShaderStage::Vertex,
+				defines: &[],
+			},
+		});
+		let fsh = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("text_rendering_fragment_shader"),
+			source: wgpu::ShaderSource::Glsl {
+				shader: include_str!("text_shaders/fragment.glsl").into(),
+				stage: wgpu::naga::ShaderStage::Fragment,
+				defines: &[],
+			},
+		});
+		Shaders::Separate {
+			vertex: vsh,
+			fragment: fsh,
+		}
+	};
+	#[cfg(all(feature = "wgsl", not(feature = "glsl")))]
+	let text_shaders = {
+		let text_shaders = wgpu_device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("text_rendering_combined_shader"),
+			source: wgpu::ShaderSource::Wgsl(include_str!("text_shaders/full.wgsl").into()),
+		});
+		Shaders::Combined { both: text_shaders }
+	};
+
 	#[cfg(not(any(feature = "glsl", feature = "wgsl")))]
 	compile_error!("Either the \"glsl\" or \"wgsl\" features must be enabled!");
 
@@ -337,6 +428,15 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 
 		wgpu_mipmap_shaders: mipmap_shaders,
 		wgpu_mipmap_pipelines: HashMap::new(),
+
+		#[cfg(feature = "text")]
+		wgpu_text_bind_group_layout: text_bind_group_layout,
+		#[cfg(feature = "text")]
+		wgpu_text_pipeline_layout: text_pipeline_layout,
+		#[cfg(feature = "text")]
+		wgpu_text_pipelines: HashMap::new(),
+		#[cfg(feature = "text")]
+		wgpu_text_shaders: text_shaders,
 	})
 }
 

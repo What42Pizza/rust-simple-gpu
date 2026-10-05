@@ -5,6 +5,7 @@ use std::{fs, path::Path};
 
 
 /// Represents a vertex shader and a fragment shader, which can be either one or two [`wgpu::ShaderModule`] values
+#[derive(Debug, Clone)]
 pub enum Shaders {
 	/// Holds two separate shaders
 	Separate {

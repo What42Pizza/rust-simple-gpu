@@ -32,7 +32,7 @@ pub fn get_pipeline_layout<'a>(
 ///
 /// # Panics
 ///
-/// The type of the argument `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed item must be the `Some` variant or this will panic.
+/// The type of the argument `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed items must be the `Some` variant or this will panic.
 #[inline]
 #[must_use]
 pub fn create_2d_pipeline(
@@ -57,7 +57,7 @@ pub fn create_2d_pipeline(
 ///
 /// # Panics
 ///
-/// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed item must be the `Some` variant or this will panic.
+/// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed items must be the `Some` variant or this will panic.
 #[inline]
 #[must_use]
 pub fn create_3d_pipeline(
@@ -96,7 +96,7 @@ pub fn create_3d_pipeline(
 ///
 /// # Panics
 ///
-/// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed item must be the `Some` variant or this will panic.
+/// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed items must be the `Some` variant or this will panic.
 #[must_use]
 pub fn create_pipeline(
 	name: &str,
