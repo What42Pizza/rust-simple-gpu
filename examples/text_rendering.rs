@@ -34,20 +34,18 @@ struct UniformsRawData {
 	mouse_pos: [u32; 2],
 }
 
-impl UniformsRawData {
-	fn update(
-		&mut self,
-		_program_data: &ProgramData,
-		screen_size: (u32, u32),
-		text_color: Color,
-		background_color: Color,
-		mouse_pos: (u32, u32),
-	) {
-		self.target_size = [screen_size.0, screen_size.1];
-		self.text_color = text_color.to_u32(&PixelFormat::RGBA32);
-		self.background_color = background_color.to_u32(&PixelFormat::RGBA32);
-		self.mouse_pos = [mouse_pos.0, mouse_pos.1];
-	}
+fn update_uniforms(
+	data: &mut ProgramData,
+	screen_size: (u32, u32),
+	text_color: Color,
+	background_color: Color,
+	mouse_pos: (u32, u32),
+) {
+	let uniforms = &mut data.uniforms_buffer.cpu_copy;
+	uniforms.target_size = [screen_size.0, screen_size.1];
+	uniforms.text_color = text_color.to_u32(&PixelFormat::RGBA32);
+	uniforms.background_color = background_color.to_u32(&PixelFormat::RGBA32);
+	uniforms.mouse_pos = [mouse_pos.0, mouse_pos.1];
 }
 
 
@@ -191,6 +189,7 @@ fn main() -> Result<()> {
 		&mut data.text_renderer,
 		&mut gpu_instance,
 	);
+	simple_gpu::sync_buffer(&mut char_buf, &gpu_instance);
 
 
 
@@ -276,18 +275,14 @@ fn main() -> Result<()> {
 		unsafe {
 			SDL_GetMouseState(&mut mouse_x, &mut mouse_y);
 		}
-		uniforms_raw_data.update(
-			&data,
+		update_uniforms(
+			&mut data,
 			window.size(),
 			Color::BLACK,
 			Color::WHITE,
 			(mouse_x as u32, mouse_y as u32),
 		);
-		simple_gpu::update_uniforms_buffer(
-			&data.uniforms_buffer,
-			&uniforms_raw_data,
-			&gpu_instance,
-		);
+		simple_gpu::sync_uniforms_buffer(&data.uniforms_buffer, &gpu_instance);
 
 		let (surface_tex, surface_tex_view, mut command_encoder) =
 			match simple_gpu::start_frame("render frame", &window_surface, &gpu_instance) {
@@ -324,7 +319,8 @@ fn main() -> Result<()> {
 			&char_buf,
 			&mut render_pass,
 			window_surface.wgpu_format,
-			&data.text_renderer,
+			window.size(),
+			&mut data.text_renderer,
 			&mut gpu_instance,
 		);
 

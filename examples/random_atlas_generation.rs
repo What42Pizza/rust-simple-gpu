@@ -41,26 +41,25 @@ struct UniformsRawData {
 	pub inv_proj_view_mat: Mat4,
 }
 
-impl UniformsRawData {
-	fn update(&mut self, program_data: &ProgramData) {
-		let camera = &program_data.camera;
-		let camera_target = glam::Vec3::new(
-			camera.rot_xz.cos() * camera.rot_y.cos(),
-			camera.rot_y.sin(),
-			camera.rot_xz.sin() * camera.rot_y.cos(),
-		);
-		self.view_mat = view::look_to_mat4(camera.pos, camera_target, Vec3::new(0.0, 1.0, 0.0));
-		self.proj_mat = proj::opengl::perspective(
-			camera.fov_radians,
-			program_data.aspect_ratio,
-			camera.near_plane,
-			camera.far_plane,
-		);
-		self.proj_view_mat = self.proj_mat * self.view_mat;
-		self.inv_view_mat = self.view_mat.inverse();
-		self.inv_proj_mat = self.proj_mat.inverse();
-		self.inv_proj_view_mat = self.proj_view_mat.inverse();
-	}
+fn update_uniforms(data: &mut ProgramData) {
+	let uniforms = &mut data.uniforms_buf.cpu_copy;
+	let camera = &data.camera;
+	let camera_target = glam::Vec3::new(
+		camera.rot_xz.cos() * camera.rot_y.cos(),
+		camera.rot_y.sin(),
+		camera.rot_xz.sin() * camera.rot_y.cos(),
+	);
+	uniforms.view_mat = view::look_to_mat4(camera.pos, camera_target, Vec3::new(0.0, 1.0, 0.0));
+	uniforms.proj_mat = proj::opengl::perspective(
+		camera.fov_radians,
+		data.aspect_ratio,
+		camera.near_plane,
+		camera.far_plane,
+	);
+	uniforms.proj_view_mat = uniforms.proj_mat * uniforms.view_mat;
+	uniforms.inv_view_mat = uniforms.view_mat.inverse();
+	uniforms.inv_proj_mat = uniforms.proj_mat.inverse();
+	uniforms.inv_proj_view_mat = uniforms.proj_view_mat.inverse();
 }
 
 
@@ -243,7 +242,6 @@ fn main() -> Result<()> {
 
 	// uniforms
 	let uniforms_buffer = simple_gpu::create_uniforms_buffer::<UniformsRawData>(&gpu_instance);
-	let mut uniforms_raw_data = UniformsRawData::zeroed();
 
 	// textures
 	let depth_tex = simple_gpu::create_depth_texture(
@@ -441,8 +439,8 @@ fn main() -> Result<()> {
 		}
 
 		// render
-		uniforms_raw_data.update(&data);
-		simple_gpu::update_uniforms_buffer(&data.uniforms_buf, &uniforms_raw_data, &gpu_instance);
+		update_uniforms(&mut data);
+		simple_gpu::sync_uniforms_buffer(&data.uniforms_buf, &gpu_instance);
 
 		let (surface_tex, surface_tex_view, mut command_encoder) =
 			match simple_gpu::start_frame("render frame", &window_surface, &gpu_instance) {

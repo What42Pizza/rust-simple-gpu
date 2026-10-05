@@ -2,8 +2,9 @@
 use crate::sync_buffer;
 use crate::{
 	AtlasAllocator, CreatedAtlasResult, GpuBuffer, GpuInstance, Texture, USAGE_VERTEX_BUFFER,
-	create_buffer, create_texture, create_texture_atlas, get_gpu_limits, place_textures_in_atlas,
-	update_texture, vertex_buffer_item_type,
+	UniformsBuffer, create_buffer, create_texture, create_texture_atlas, create_uniforms_buffer,
+	get_gpu_limits, place_textures_in_atlas, sync_uniforms_buffer, update_texture,
+	vertex_buffer_item_type,
 };
 use anyhow::{Result, bail};
 use std::collections::HashMap;
@@ -43,6 +44,8 @@ pub struct TextRenderer {
 	/// Maps a [`StringData`] to its position in [`Self::string_datas_buffer`] (if it already exists there)
 	pub string_data_locations: HashMap<StringData, u32>,
 
+	/// The uniforms needed for rendering text
+	pub uniforms_buffer: UniformsBuffer<TextUniformsRawData>,
 	/// The bind group for the text rendering pipeline
 	pub wgpu_bind_group: wgpu::BindGroup,
 }
@@ -76,6 +79,14 @@ pub struct StringData {
 	pub background_color: [u8; 4],
 	/// Holds the depth that the string will be rendered with (assuming a depth tex is provided)
 	pub depth: u32,
+}
+
+/// The uniforms needed for rendering text
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[repr(C)]
+pub struct TextUniformsRawData {
+	/// The size of the output target
+	pub target_size: [u32; 2],
 }
 
 
@@ -192,6 +203,8 @@ pub fn create_text_renderer(
 		gpu_instance,
 	);
 
+	let uniforms_buffer = create_uniforms_buffer(gpu_instance);
+
 	let bind_group = gpu_instance
 		.wgpu_device
 		.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -200,14 +213,20 @@ pub fn create_text_renderer(
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&atlas_tex.wgpu_view),
+					resource: wgpu::BindingResource::Buffer(
+						uniforms_buffer.wgpu_buffer.as_entire_buffer_binding(),
+					),
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_linear_sampler),
+					resource: wgpu::BindingResource::TextureView(&atlas_tex.wgpu_view),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
+					resource: wgpu::BindingResource::Sampler(&gpu_instance.wgpu_linear_sampler),
+				},
+				wgpu::BindGroupEntry {
+					binding: 3,
 					resource: wgpu::BindingResource::Buffer(
 						string_datas_buffer.wgpu_buffer.as_entire_buffer_binding(),
 					),
@@ -229,6 +248,8 @@ pub fn create_text_renderer(
 
 		string_datas_buffer,
 		string_data_locations: HashMap::new(),
+
+		uniforms_buffer,
 		wgpu_bind_group: bind_group,
 	})
 }
@@ -247,6 +268,8 @@ pub fn trim_text_renderer(text_renderer: &mut TextRenderer, max_string_datas: u1
 		text_renderer.string_data_locations.clear();
 	}
 }
+
+
 
 /// Returns the pipeline needed for rendering text with a given output texture format
 #[inline]
@@ -493,13 +516,20 @@ pub fn render_queued_text(
 	characters_buffer: &GpuBuffer<GlyphInstanceData>,
 	render_pass: &mut wgpu::RenderPass,
 	output_format: wgpu::TextureFormat,
-	text_renderer: &TextRenderer,
+	output_size: (u32, u32),
+	text_renderer: &mut TextRenderer,
 	gpu_instance: &mut GpuInstance,
 ) {
+	let output_size = <[u32; 2]>::from(output_size);
+	if text_renderer.uniforms_buffer.cpu_copy.target_size != output_size {
+		text_renderer.uniforms_buffer.cpu_copy.target_size = output_size;
+		sync_uniforms_buffer(&text_renderer.uniforms_buffer, gpu_instance);
+	}
+
 	let pipeline = get_text_rendering_pipeline(output_format, gpu_instance);
 
 	render_pass.set_pipeline(pipeline);
-	render_pass.set_bind_group(0, &text_renderer.wgpu_bind_group, &[]);
+	render_pass.set_bind_group(1, &text_renderer.wgpu_bind_group, &[]);
 	render_pass.set_vertex_buffer(0, characters_buffer.wgpu_buffer.slice(..));
 	render_pass.draw(0..4, 0..characters_buffer.wgpu_buffer_len);
 }

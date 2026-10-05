@@ -38,26 +38,25 @@ struct UniformsRawData {
 	pub inv_proj_view_mat: Mat4,
 }
 
-impl UniformsRawData {
-	fn update(&mut self, program_data: &ProgramData) {
-		let camera = &program_data.camera;
-		let camera_target = glam::Vec3::new(
-			camera.rot_xz.cos() * camera.rot_y.cos(),
-			camera.rot_y.sin(),
-			camera.rot_xz.sin() * camera.rot_y.cos(),
-		);
-		self.view_mat = view::look_to_mat4(camera.pos, camera_target, Vec3::new(0.0, 1.0, 0.0));
-		self.proj_mat = proj::opengl::perspective(
-			camera.fov_radians,
-			program_data.aspect_ratio,
-			camera.near_plane,
-			camera.far_plane,
-		);
-		self.proj_view_mat = self.proj_mat * self.view_mat;
-		self.inv_view_mat = self.view_mat.inverse();
-		self.inv_proj_mat = self.proj_mat.inverse();
-		self.inv_proj_view_mat = self.proj_view_mat.inverse();
-	}
+fn update_uniforms(data: &mut ProgramData) {
+	let uniforms = &mut data.uniforms_buf.cpu_copy;
+	let camera = &data.camera;
+	let camera_target = glam::Vec3::new(
+		camera.rot_xz.cos() * camera.rot_y.cos(),
+		camera.rot_y.sin(),
+		camera.rot_xz.sin() * camera.rot_y.cos(),
+	);
+	uniforms.view_mat = view::look_to_mat4(camera.pos, camera_target, Vec3::new(0.0, 1.0, 0.0));
+	uniforms.proj_mat = proj::opengl::perspective(
+		camera.fov_radians,
+		data.aspect_ratio,
+		camera.near_plane,
+		camera.far_plane,
+	);
+	uniforms.proj_view_mat = uniforms.proj_mat * uniforms.view_mat;
+	uniforms.inv_view_mat = uniforms.view_mat.inverse();
+	uniforms.inv_proj_mat = uniforms.proj_mat.inverse();
+	uniforms.inv_proj_view_mat = uniforms.proj_view_mat.inverse();
 }
 
 
@@ -71,12 +70,12 @@ struct ProgramData {
 	aspect_ratio: f32,
 
 	pipeline: wgpu::RenderPipeline,
-	vertex_buffer: simple_gpu::GpuBuffer<VertexData>,
-	index_buffer: simple_gpu::GpuBuffer<u16>,
-	instance_buffer: simple_gpu::GpuBuffer<InstanceData>,
+	vertex_buf: simple_gpu::GpuBuffer<VertexData>,
+	index_buf: simple_gpu::GpuBuffer<u16>,
+	instance_buf: simple_gpu::GpuBuffer<InstanceData>,
 	textures: Textures,
 
-	uniforms_buffer: simple_gpu::UniformsBuffer<UniformsRawData>,
+	uniforms_buf: simple_gpu::UniformsBuffer<UniformsRawData>,
 }
 
 struct CameraData {
@@ -253,15 +252,15 @@ fn main() -> Result<()> {
 		aspect_ratio: window_size.0 as f32 / window_size.1 as f32,
 
 		pipeline,
-		vertex_buffer,
-		index_buffer,
-		instance_buffer,
+		vertex_buf: vertex_buffer,
+		index_buf: index_buffer,
+		instance_buf: instance_buffer,
 		textures: Textures {
 			depth_tex,
 			wall_tex,
 		},
 
-		uniforms_buffer,
+		uniforms_buf: uniforms_buffer,
 	};
 
 
@@ -344,12 +343,8 @@ fn main() -> Result<()> {
 		}
 
 		// render
-		uniforms_raw_data.update(&data);
-		simple_gpu::update_uniforms_buffer(
-			&data.uniforms_buffer,
-			&uniforms_raw_data,
-			&gpu_instance,
-		);
+		update_uniforms(&mut data);
+		simple_gpu::sync_uniforms_buffer(&data.uniforms_buf, &gpu_instance);
 
 		let (surface_tex, surface_tex_view, mut command_encoder) =
 			match simple_gpu::start_frame("render frame", &window_surface, &gpu_instance) {
@@ -373,7 +368,7 @@ fn main() -> Result<()> {
 
 		let mut render_pass = simple_gpu::start_3d_render_pass(
 			"main render pass",
-			&data.uniforms_buffer.wgpu_bind_group,
+			&data.uniforms_buf.wgpu_bind_group,
 			&[(&surface_tex_view, Some(wgpu::Color::WHITE))],
 			&data.textures.depth_tex.wgpu_view,
 			true,
@@ -383,14 +378,11 @@ fn main() -> Result<()> {
 		simple_gpu::render(
 			&mut render_pass,
 			&data.pipeline,
-			&[
-				&data.vertex_buffer.wgpu_buffer,
-				&data.instance_buffer.wgpu_buffer,
-			],
-			Some(&data.index_buffer),
+			&[&data.vertex_buf.wgpu_buffer, &data.instance_buf.wgpu_buffer],
+			Some(&data.index_buf),
 			&[&data.textures.wall_tex.wgpu_bind_group],
-			data.vertex_buffer.wgpu_buffer_len,
-			data.instance_buffer.wgpu_buffer_len,
+			data.vertex_buf.wgpu_buffer_len,
+			data.instance_buf.wgpu_buffer_len,
 		);
 
 		simple_gpu::finish_render_pass(render_pass);

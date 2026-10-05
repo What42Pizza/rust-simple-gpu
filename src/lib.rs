@@ -334,8 +334,18 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 			label: Some("text_rendering_bind_group_layout"),
 			entries: &[
 				wgpu::BindGroupLayoutEntry {
-					// texture
 					binding: 0,
+					visibility: wgpu::ShaderStages::VERTEX,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					// texture
+					binding: 1,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Texture {
 						multisampled: false,
@@ -346,14 +356,14 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 				},
 				wgpu::BindGroupLayoutEntry {
 					// sampler
-					binding: 1,
+					binding: 2,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
 				},
 				wgpu::BindGroupLayoutEntry {
 					// string data storage
-					binding: 2,
+					binding: 3,
 					visibility: wgpu::ShaderStages::VERTEX,
 					ty: wgpu::BindingType::Buffer {
 						ty: wgpu::BufferBindingType::Storage { read_only: true },
@@ -369,7 +379,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 	let text_pipeline_layout =
 		wgpu_device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("text_pipeline_layout"),
-			bind_group_layouts: &[Some(&text_bind_group_layout)],
+			bind_group_layouts: &[None, Some(&text_bind_group_layout)],
 			immediate_size: 0,
 		});
 

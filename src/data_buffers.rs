@@ -29,7 +29,7 @@ pub const USAGE_INSTANCE_BUFFER: wgpu::BufferUsages = USAGE_VERTEX_BUFFER;
 pub struct GpuBuffer<ItemRawData: bytemuck::Pod> {
 	/// Holds the name of the buffer, only used when reallocating the wgpu buffer
 	pub name: String,
-	/// Holds a cpu-side copy of the vertex buffer's data
+	/// Holds a cpu-side copy of the buffer's items
 	pub cpu_copy: Vec<ItemRawData>,
 	/// A handle to the gpu buffer
 	pub wgpu_buffer: wgpu::Buffer,
@@ -56,7 +56,7 @@ impl<ItemRawData: bytemuck::Pod> DerefMut for GpuBuffer<ItemRawData> {
 	}
 }
 
-/// Creates a new vertex buffer (which can also be used for instance datas). Note: the byte size of the resulting wgpu buffer is `count * size_of::<ItemRawData>()`
+/// Creates a new buffer of data that can be sent to the gpu. Note: the byte size of the resulting wgpu buffer is `count * size_of::<ItemRawData>()`
 #[inline]
 #[must_use]
 pub fn create_buffer<ItemRawData: bytemuck::Pod>(
@@ -122,26 +122,26 @@ pub fn init_buffer<ItemRawData: bytemuck::Pod>(
 /// Note: the wgpu buffer is automatically reallocated if it is not large enough
 #[inline]
 pub fn sync_buffer<ItemRawData: bytemuck::Pod>(
-	vertex_buffer: &mut GpuBuffer<ItemRawData>,
+	buffer: &mut GpuBuffer<ItemRawData>,
 	gpu_instance: &GpuInstance,
 ) {
-	if vertex_buffer.wgpu_buffer_capacity < vertex_buffer.cpu_copy.len() as u32 {
-		let new_capacity = (vertex_buffer.cpu_copy.len() * 3 / 2) as u32;
+	if buffer.wgpu_buffer_capacity < buffer.cpu_copy.len() as u32 {
+		let new_capacity = (buffer.cpu_copy.len() * 3 / 2) as u32;
 		let buf_desc = wgpu::BufferDescriptor {
-			label: Some(&vertex_buffer.name),
+			label: Some(&buffer.name),
 			size: u64::from(new_capacity) * std::mem::size_of::<ItemRawData>() as u64,
-			usage: vertex_buffer.wgpu_buffer.usage(),
+			usage: buffer.wgpu_buffer.usage(),
 			mapped_at_creation: false,
 		};
-		vertex_buffer.wgpu_buffer = gpu_instance.wgpu_device.create_buffer(&buf_desc);
-		vertex_buffer.wgpu_buffer_capacity = new_capacity;
+		buffer.wgpu_buffer = gpu_instance.wgpu_device.create_buffer(&buf_desc);
+		buffer.wgpu_buffer_capacity = new_capacity;
 	}
 	gpu_instance.wgpu_queue.write_buffer(
-		&vertex_buffer.wgpu_buffer,
+		&buffer.wgpu_buffer,
 		0,
-		bytemuck::cast_slice(&vertex_buffer.cpu_copy),
+		bytemuck::cast_slice(&buffer.cpu_copy),
 	);
-	vertex_buffer.wgpu_buffer_len = vertex_buffer.cpu_copy.len() as u32;
+	buffer.wgpu_buffer_len = buffer.cpu_copy.len() as u32;
 }
 
 
@@ -230,7 +230,9 @@ macro_rules! vertex_buffer_item_type {
 
 
 /// Holds all the uniform data. It is suggested that only one of these is made, and that it is updated exactly once per frame
-pub struct UniformsBuffer<UniformsRawData> {
+pub struct UniformsBuffer<UniformsRawData: bytemuck::Pod> {
+	/// Holds a cpu-side copy of the buffer's items
+	pub cpu_copy: UniformsRawData,
 	/// A handle to the gpu buffer
 	pub wgpu_buffer: wgpu::Buffer,
 	/// This is a bind group with just one binding, which is a link to this struct's [`wgpu::Buffer`]. The layout for this is taken from [`GpuInstance::wgpu_uniforms_bind_group_layout`]
@@ -242,7 +244,7 @@ pub struct UniformsBuffer<UniformsRawData> {
 /// Creates the buffer that stores uniform data
 #[inline]
 #[must_use]
-pub fn create_uniforms_buffer<UniformsRawData>(
+pub fn create_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
 	gpu_instance: &GpuInstance,
 ) -> UniformsBuffer<UniformsRawData> {
 	debug_assert!(
@@ -272,6 +274,7 @@ pub fn create_uniforms_buffer<UniformsRawData>(
 		});
 
 	UniformsBuffer {
+		cpu_copy: UniformsRawData::zeroed(),
 		wgpu_buffer: buffer,
 		wgpu_bind_group: bind_group,
 		_phantom: PhantomData,
@@ -280,14 +283,13 @@ pub fn create_uniforms_buffer<UniformsRawData>(
 
 /// Updates the uniforms buffer with new data
 #[inline]
-pub fn update_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
+pub fn sync_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
 	uniforms_buffer: &UniformsBuffer<UniformsRawData>,
-	uniforms_raw_data: &UniformsRawData,
 	gpu_instance: &GpuInstance,
 ) {
 	gpu_instance.wgpu_queue.write_buffer(
 		&uniforms_buffer.wgpu_buffer,
 		0,
-		bytemuck::bytes_of(uniforms_raw_data),
+		bytemuck::bytes_of(&uniforms_buffer.cpu_copy),
 	);
 }
