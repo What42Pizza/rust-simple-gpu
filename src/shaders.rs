@@ -1,5 +1,5 @@
 use crate::{GpuInstance, file_name};
-use anyhow::{Context, Ok, Result};
+use anyhow::{Context, Ok, Result, bail};
 use std::{fs, path::Path};
 
 
@@ -50,7 +50,7 @@ impl Shaders {
 
 
 
-/// Loads a two glsl shaders (one vertex shader and one fragment shader) from files
+/// Loads two glsl shaders (one vertex shader and one fragment shader) from files
 ///
 /// # Errors
 ///
@@ -68,13 +68,38 @@ pub fn load_glsl_shaders(
 		.with_context(|| format!("Failed to read file {}", vsh_path.display()))?;
 	let fragment_shader = fs::read_to_string(fsh_path)
 		.with_context(|| format!("Failed to read file {}", fsh_path.display()))?;
+	let Some(vsh_name) = file_name(vsh_path) else { bail!("Failed to get the file name of the path \"{}\"", vsh_path.display()); };
+	let Some(fsh_name) = file_name(fsh_path) else { bail!("Failed to get the file name of the path \"{}\"", fsh_path.display()); };
+	let shaders = make_glsl_shaders(
+		vsh_name,
+		vertex_shader,
+		fsh_name,
+		fragment_shader,
+		gpu_instance,
+		defines,
+	);
+	Ok(shaders)
+}
+
+/// Creates two glsl shaders (one vertex shader and one fragment shader) from source strings
+#[inline]
+#[cfg(feature = "glsl")]
+pub fn make_glsl_shaders(
+	vsh_name: impl AsRef<str>,
+	vsh_shader: impl AsRef<str>,
+	fsh_name: impl AsRef<str>,
+	fsh_shader: impl AsRef<str>,
+	gpu_instance: &GpuInstance,
+	defines: &[(&str, &str)],
+) -> Shaders {
+	let (vsh_shader, fsh_shader) = (vsh_shader.as_ref(), fsh_shader.as_ref());
 	let vertex_shader =
 		gpu_instance
 			.wgpu_device
 			.create_shader_module(wgpu::ShaderModuleDescriptor {
-				label: file_name(vsh_path).as_deref(),
+				label: Some(vsh_name.as_ref()),
 				source: wgpu::ShaderSource::Glsl {
-					shader: vertex_shader.into(),
+					shader: vsh_shader.into(),
 					stage: wgpu::naga::ShaderStage::Vertex,
 					defines,
 				},
@@ -83,17 +108,17 @@ pub fn load_glsl_shaders(
 		gpu_instance
 			.wgpu_device
 			.create_shader_module(wgpu::ShaderModuleDescriptor {
-				label: file_name(fsh_path).as_deref(),
+				label: Some(fsh_name.as_ref()),
 				source: wgpu::ShaderSource::Glsl {
-					shader: fragment_shader.into(),
+					shader: fsh_shader.into(),
 					stage: wgpu::naga::ShaderStage::Fragment,
 					defines,
 				},
 			});
-	Ok(Shaders::Separate {
+	Shaders::Separate {
 		vertex: vertex_shader,
 		fragment: fragment_shader,
-	})
+	}
 }
 
 
@@ -109,11 +134,25 @@ pub fn load_wgsl_shader(path: impl AsRef<Path>, gpu_instance: &GpuInstance) -> R
 	let path = path.as_ref();
 	let shader = fs::read_to_string(path)
 		.with_context(|| format!("Failed to read file {}", path.display()))?;
+	let Some(name) = file_name(path) else { bail!("Failed to get the file name of the path \"{}\"", path.display()); };
+	let shaders = make_wgsl_shader(name, shader, gpu_instance);
+	Ok(shaders)
+}
+
+/// Creates a wgsl shader from a source string, this function is used for both vertex and fragment shaders
+#[inline]
+#[cfg(feature = "wgsl")]
+pub fn make_wgsl_shader(
+	name: impl AsRef<str>,
+	shader: impl AsRef<str>,
+	gpu_instance: &GpuInstance,
+) -> Shaders {
+	let shader = shader.as_ref();
 	let shader = gpu_instance
 		.wgpu_device
 		.create_shader_module(wgpu::ShaderModuleDescriptor {
-			label: file_name(path).as_deref(),
+			label: Some(name.as_ref()),
 			source: wgpu::ShaderSource::Wgsl(shader.into()),
 		});
-	Ok(Shaders::Combined { both: shader })
+	Shaders::Combined { both: shader }
 }

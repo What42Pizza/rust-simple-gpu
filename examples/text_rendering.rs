@@ -142,7 +142,6 @@ fn main() -> Result<()> {
 
 	// uniforms
 	let uniforms_buffer = simple_gpu::create_uniforms_buffer::<UniformsRawData>(&gpu_instance);
-	let mut uniforms_raw_data = UniformsRawData::zeroed();
 
 	// textures
 	let depth_tex = simple_gpu::create_depth_texture(
