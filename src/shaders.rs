@@ -68,8 +68,18 @@ pub fn load_glsl_shaders(
 		.with_context(|| format!("Failed to read file {}", vsh_path.display()))?;
 	let fragment_shader = fs::read_to_string(fsh_path)
 		.with_context(|| format!("Failed to read file {}", fsh_path.display()))?;
-	let Some(vsh_name) = file_name(vsh_path) else { bail!("Failed to get the file name of the path \"{}\"", vsh_path.display()); };
-	let Some(fsh_name) = file_name(fsh_path) else { bail!("Failed to get the file name of the path \"{}\"", fsh_path.display()); };
+	let Some(vsh_name) = file_name(vsh_path) else {
+		bail!(
+			"Failed to get the file name of the path \"{}\"",
+			vsh_path.display()
+		);
+	};
+	let Some(fsh_name) = file_name(fsh_path) else {
+		bail!(
+			"Failed to get the file name of the path \"{}\"",
+			fsh_path.display()
+		);
+	};
 	let shaders = make_glsl_shaders(
 		vsh_name,
 		vertex_shader,
@@ -134,7 +144,12 @@ pub fn load_wgsl_shader(path: impl AsRef<Path>, gpu_instance: &GpuInstance) -> R
 	let path = path.as_ref();
 	let shader = fs::read_to_string(path)
 		.with_context(|| format!("Failed to read file {}", path.display()))?;
-	let Some(name) = file_name(path) else { bail!("Failed to get the file name of the path \"{}\"", path.display()); };
+	let Some(name) = file_name(path) else {
+		bail!(
+			"Failed to get the file name of the path \"{}\"",
+			path.display()
+		);
+	};
 	let shaders = make_wgsl_shader(name, shader, gpu_instance);
 	Ok(shaders)
 }
