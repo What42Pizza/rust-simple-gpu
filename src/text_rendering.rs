@@ -55,7 +55,7 @@ pub struct GlyphRenderData {
 	/// This is the location of the character's vdf texture within the text renderer's texture atlas (x1, y1, x2, y2)
 	pub tex_coords: [u16; 4],
 	/// Defines the placement of the glyph within the vdf texture
-	pub glyph_offset: (u32, u32),
+	pub glyph_offset: (u16, u16),
 	/// This is the raw data of the character's vdf texture, used if the character atlas needs to be recreated
 	pub vdf_tex_data: Vec<u8>,
 	/// This is the width and height of `vdf_tex_data`
@@ -87,6 +87,8 @@ pub struct StringData {
 pub struct TextUniformsRawData {
 	/// The size of the output target
 	pub target_size: [u32; 2],
+	/// The size of the character atlas
+	pub atlas_size: [u32; 2],
 }
 
 
@@ -140,7 +142,7 @@ pub fn create_text_renderer(
 			bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
 			bitmap.placement.top = (bitmap.placement.top + 1) / 3 + 2;
 			char_textures.push((bitmap.placement.width, bitmap.placement.height, data));
-			let glyph_offset = (bitmap.placement.left as u32, bitmap.placement.top as u32);
+			let glyph_offset = (bitmap.placement.left as u16, bitmap.placement.top as u16);
 			let glyph_data = GlyphRenderData {
 				tex_coords: [0; 4],
 				glyph_offset,
@@ -392,17 +394,28 @@ pub fn place_text(
 	});
 
 	let mut total_advance = pos.0;
+	let rasterize_size = text_renderer.rasterize_size;
 	for glyph in glyph_to_place {
 		let glyph_render_data = get_glyph_render_data(glyph.id, text_renderer, gpu_instance);
 		let Some(glyph_render_data) = glyph_render_data else {
+			total_advance += glyph.advance as i32;
 			continue;
 		};
+		let mut glyph_size: (u32, u32) = (
+			u32::from(glyph_render_data.vdf_tex_size.0),
+			u32::from(glyph_render_data.vdf_tex_size.1),
+		);
+		glyph_size = (
+			glyph_size.0 * size / rasterize_size,
+			glyph_size.1 * size / rasterize_size,
+		);
+		let glyph_size = (glyph_size.0 as u16, glyph_size.1 as u16);
 		let char_instance = GlyphInstanceData {
 			pos: [
-				pos.0 + total_advance - glyph_render_data.glyph_offset.0 as i32,
-				pos.1 - glyph_render_data.glyph_offset.1 as i32,
+				pos.0 + total_advance - i32::from(glyph_render_data.glyph_offset.0),
+				pos.1 + size as i32 - i32::from(glyph_render_data.glyph_offset.1),
 			],
-			size: glyph_render_data.vdf_tex_size.into(),
+			size: glyph_size.into(),
 			tex_coords: glyph_render_data.tex_coords,
 			string_id,
 		};
@@ -459,7 +472,7 @@ pub fn get_glyph_render_data<'a>(
 	bitmap.placement.height = (bitmap.placement.height) / 3 + 4;
 	bitmap.placement.left = (bitmap.placement.left + 1) / 3 + 2;
 	bitmap.placement.top = (bitmap.placement.top + 1) / 3 + 2;
-	let glyph_offset = (bitmap.placement.left as u32, bitmap.placement.top as u32);
+	let glyph_offset = (bitmap.placement.left as u16, bitmap.placement.top as u16);
 
 	let (placement, needs_resize, atlas_tex_size) = place_textures_in_atlas(
 		&[&*data],
@@ -520,9 +533,23 @@ pub fn render_queued_text(
 	text_renderer: &mut TextRenderer,
 	gpu_instance: &mut GpuInstance,
 ) {
+	debug_assert_eq!(
+		characters_buffer.len(),
+		characters_buffer.wgpu_buffer_len as usize,
+		"The given character buffer has not been synced, meaning its cpu-side data has not been transferred to the gpu, please call `simple_gpu::sync_buffer()` on the given character buffer before rendering"
+	);
+	debug_assert_eq!(
+		text_renderer.string_datas_buffer.len(),
+		text_renderer.string_datas_buffer.wgpu_buffer_len as usize,
+		"The text renderer's `string_datas_buffer` field has not been synced, meaning its cpu-side data has not been transferred to the gpu, please call `simple_gpu::sync_buffer(&text_renderer.string_datas_buffer)` before rendering"
+	);
+
 	let output_size = <[u32; 2]>::from(output_size);
-	if text_renderer.uniforms_buffer.cpu_copy.target_size != output_size {
+	let atlas_size = <[u32; 2]>::from(text_renderer.atlas_tex.settings.size);
+	let uniforms_cpu_copy = &text_renderer.uniforms_buffer.cpu_copy;
+	if uniforms_cpu_copy.target_size != output_size || uniforms_cpu_copy.atlas_size != atlas_size {
 		text_renderer.uniforms_buffer.cpu_copy.target_size = output_size;
+		text_renderer.uniforms_buffer.cpu_copy.atlas_size = atlas_size;
 		sync_uniforms_buffer(&text_renderer.uniforms_buffer, gpu_instance);
 	}
 

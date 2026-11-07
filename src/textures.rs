@@ -36,6 +36,8 @@ pub struct Texture {
 
 /// Holds the settings that a [`Texture`] was created with
 pub struct TextureSettings {
+	/// The size of the texture
+	pub size: (u32, u32),
 	/// The format of the texture's pixels, e.g. [`wgpu::TextureFormat::Rgba8Unorm`]
 	pub pixel_format: wgpu::TextureFormat,
 	/// The filter / sampling mode, with [`wgpu::FilterMode::Linear`] being filtered and [`wgpu::FilterMode::Nearest`] being non-filtered
@@ -144,6 +146,7 @@ pub fn create_texture(
 		wgpu_mipmap_views: mipmap_views,
 		wgpu_mipmap_bind_groups: mipmap_bind_groups,
 		settings: TextureSettings {
+			size,
 			pixel_format: format,
 			filter_mode,
 			mip_count,

@@ -110,8 +110,8 @@ fn main() -> Result<()> {
 	let video = sdl.video()?;
 	let mut window = video
 		//.window("Simple Gpu Example", 64 * 6, 64 * 6)
-		.window("Simple Gpu Example", 80, 80)
-		//.fullscreen()
+		.window("Simple Gpu Example", 640, 480)
+		.fullscreen()
 		.position_centered()
 		.resizable()
 		.hidden()
@@ -181,15 +181,16 @@ fn main() -> Result<()> {
 
 	let mut char_buf = simple_gpu::create_characters_buffer("main text buffer", &mut gpu_instance);
 	simple_gpu::place_text(
-		"Text Test Abc",
-		(16, 16, 0),
-		32,
+		"Text Abc _",
+		(100, 100, 0),
+		300,
 		wgpu::Color::BLACK,
 		&mut char_buf,
 		&mut data.text_renderer,
 		&mut gpu_instance,
 	);
 	simple_gpu::sync_buffer(&mut char_buf, &gpu_instance);
+	simple_gpu::sync_buffer(&mut data.text_renderer.string_datas_buffer, &gpu_instance);
 
 
 
