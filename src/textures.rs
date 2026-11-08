@@ -321,11 +321,12 @@ pub fn set_filter_mode(
 #[inline]
 #[cfg(feature = "image")]
 pub fn load_texture_from_path(
-	path: &Path,
+	path: impl AsRef<Path>,
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	gpu_instance: &GpuInstance,
 ) -> Result<Texture> {
+	let path = path.as_ref();
 	let texture_image =
 		image::open(path).with_context(|| format!("Failed to read file {}", path.display()))?;
 	let size = (texture_image.width(), texture_image.height());
@@ -358,6 +359,7 @@ pub struct AtlasLocation {
 	pub alloc_id: guillotiere::AllocId,
 }
 
+#[cfg(feature = "atlas")]
 impl Default for AtlasLocation {
 	#[inline]
 	fn default() -> Self {
@@ -381,6 +383,7 @@ pub struct AtlasAllocator {
 }
 
 /// This is the return value of creating a new atlas
+#[cfg(feature = "atlas")]
 pub struct CreatedAtlasResult<ItemToPlacementMapping> {
 	/// This is where each item was allocated within the atlas
 	pub placements: ItemToPlacementMapping,
@@ -815,7 +818,7 @@ pub const fn fit_mip(v: u32, max_mip: u32) -> u32 {
 #[cfg(all(feature = "atlas", feature = "image"))]
 pub fn create_texture_atlas_from_path(
 	name: &str,
-	path: &Path,
+	path: impl AsRef<Path>,
 	recursive: bool,
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
@@ -823,6 +826,7 @@ pub fn create_texture_atlas_from_path(
 	min_size: Option<(u32, u32)>,
 	gpu_instance: &mut GpuInstance,
 ) -> Result<CreatedAtlasResult<HashMap<PathBuf, AtlasLocation>>> {
+	let path = path.as_ref();
 	let mut textures = vec![];
 	let mut texture_paths = vec![];
 	let mut paths = std::fs::read_dir(path)
