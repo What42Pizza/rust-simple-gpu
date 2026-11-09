@@ -23,7 +23,7 @@ pub enum Shaders {
 
 impl Shaders {
 	/// Gets the [`wgpu::ShaderModule`] that holds the vertex shader
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	#[must_use]
 	pub const fn vertex(&self) -> &wgpu::ShaderModule {
 		match self {
@@ -35,7 +35,7 @@ impl Shaders {
 		}
 	}
 	/// Gets the [`wgpu::ShaderModule`] that holds the fragment shader
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	#[must_use]
 	pub const fn fragment(&self) -> &wgpu::ShaderModule {
 		match self {
@@ -55,7 +55,7 @@ impl Shaders {
 /// # Errors
 ///
 /// This only errors if the files cannot be read.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[cfg(feature = "glsl")]
 pub fn load_glsl_shaders(
 	vsh_path: impl AsRef<Path>,
@@ -92,7 +92,7 @@ pub fn load_glsl_shaders(
 }
 
 /// Creates two glsl shaders (one vertex shader and one fragment shader) from source strings
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[cfg(feature = "glsl")]
 pub fn make_glsl_shaders(
 	vsh_name: impl AsRef<str>,
@@ -138,7 +138,7 @@ pub fn make_glsl_shaders(
 /// # Errors
 ///
 /// This only errors if it fails to read the file.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[cfg(feature = "wgsl")]
 pub fn load_wgsl_shader(path: impl AsRef<Path>, gpu_instance: &GpuInstance) -> Result<Shaders> {
 	let path = path.as_ref();
@@ -155,7 +155,7 @@ pub fn load_wgsl_shader(path: impl AsRef<Path>, gpu_instance: &GpuInstance) -> R
 }
 
 /// Creates a wgsl shader from a source string, this function is used for both vertex and fragment shaders
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[cfg(feature = "wgsl")]
 pub fn make_wgsl_shader(
 	name: impl AsRef<str>,

@@ -51,7 +51,7 @@ pub struct TextureSettings {
 /// Creates a new texture with a given size and format. More:
 ///
 /// - `mip_count` must be at least 1
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_texture(
 	name: impl Into<String>,
@@ -171,7 +171,7 @@ pub struct DepthTexture {
 ///
 /// - This always uses the default samplers
 /// - The mip level is always 1
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_depth_texture(
 	name: impl Into<String>,
@@ -238,7 +238,7 @@ pub fn create_depth_texture(
 /// # Panics
 ///
 /// This will panic if the given format does not have a known block copy size (aka pixel byte size), see [`wgpu::TextureFormat::block_copy_size()`] for more.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInstance) {
 	let (width, height) = (texture.wgpu_texture.width(), texture.wgpu_texture.height());
 	gpu_instance.wgpu_queue.write_texture(
@@ -275,7 +275,7 @@ pub fn update_texture(texture: &Texture, new_data: &[u8], gpu_instance: &GpuInst
 }
 
 /// Sets the filter mode for a texture
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn set_filter_mode(
 	texture: &mut Texture,
 	filter_mode: wgpu::FilterMode,
@@ -318,7 +318,7 @@ pub fn set_filter_mode(
 /// # Errors
 ///
 /// This errors if [`image::open()`] errors or if it cannot get the file name from the path.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[cfg(feature = "image")]
 pub fn load_texture_from_path(
 	path: impl AsRef<Path>,
@@ -361,7 +361,7 @@ pub struct AtlasLocation {
 
 #[cfg(feature = "atlas")]
 impl Default for AtlasLocation {
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	fn default() -> Self {
 		Self {
 			pos: (0, 0),
@@ -793,7 +793,7 @@ pub fn resize_atlas_data(
 }
 
 /// Rounds a value up to the nearest `1 << max_mip`. For example, `fit_mip(20, 3)` will return 32 because `1 << 3` is 16 and 32 is the lowest multiple of 16 that can fit 20
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 #[cfg(feature = "atlas")]
 pub const fn fit_mip(v: u32, max_mip: u32) -> u32 {
@@ -887,7 +887,7 @@ pub fn create_texture_atlas_from_path(
 
 
 /// Creates a basic [`wgpu::Sampler`] with a specified wrapping mode and filtering mode
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn make_sampler(
 	wrap_mode: wgpu::AddressMode,
@@ -908,7 +908,7 @@ pub fn make_sampler(
 
 
 /// Regenerates the mipmap data for a texture
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn refill_mipmaps(
 	texture: &Texture,
 	command_encoder: &mut wgpu::CommandEncoder,
@@ -945,7 +945,7 @@ pub fn refill_mipmaps(
 }
 
 /// Returns the pipeline needed for rendering a texture's mipmaps
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn get_mipmap_pipeline(
 	texture_format: wgpu::TextureFormat,

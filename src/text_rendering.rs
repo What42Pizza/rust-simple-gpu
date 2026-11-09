@@ -263,7 +263,7 @@ pub fn create_text_renderer(
 /// Notes:
 /// - This should never be called between [`place_text()`] and [`render_queued_text()`], this should only be called at the very start or (preferably) the very end of the frame.
 /// - If this function is not used, that may be considered a memory leak. However, if you always render text with the same colors and depths, this function may not be needed because the number of stored string datas would not continuously increase.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn trim_text_renderer(text_renderer: &mut TextRenderer, max_string_datas: u16) {
 	if text_renderer.string_datas_buffer.len() > max_string_datas as usize {
 		text_renderer.string_datas_buffer.clear();
@@ -274,7 +274,7 @@ pub fn trim_text_renderer(text_renderer: &mut TextRenderer, max_string_datas: u1
 
 
 /// Returns the pipeline needed for rendering text with a given output texture format
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn get_text_rendering_pipeline(
 	output_format: wgpu::TextureFormat,
@@ -334,7 +334,7 @@ pub fn get_text_rendering_pipeline(
 
 
 /// Creates a buffer of character instance datas
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_characters_buffer(
 	name: impl Into<String>,
@@ -524,7 +524,7 @@ pub fn get_glyph_render_data<'a>(
 
 
 /// Renders queued text using an existing render pass
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn render_queued_text(
 	characters_buffer: &GpuBuffer<GlyphInstanceData>,
 	render_pass: &mut wgpu::RenderPass,

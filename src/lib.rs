@@ -453,7 +453,7 @@ pub fn init(min_limits: wgpu::Limits, memory_hint: wgpu::MemoryHints) -> Result<
 
 
 /// Allows you to start rendering a frame by preparing instructions for the gpu
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn start_command_encoder(name: &str, gpu_instance: &GpuInstance) -> wgpu::CommandEncoder {
 	gpu_instance
@@ -462,7 +462,7 @@ pub fn start_command_encoder(name: &str, gpu_instance: &GpuInstance) -> wgpu::Co
 }
 
 /// Submits a command encoder to the gpu, which starts the actual rendering of the next frame
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn submit_gpu_commands(command_encoder: wgpu::CommandEncoder, gpu_instance: &GpuInstance) {
 	gpu_instance
 		.wgpu_queue
@@ -488,7 +488,7 @@ pub enum StartFrameResult {
 }
 
 /// Combines [`get_surface_texture()`] and [`start_command_encoder()`] into a single function
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn start_frame(
 	name: &str,
@@ -505,7 +505,7 @@ pub fn start_frame(
 }
 
 /// Combines [`submit_gpu_commands()`] and [`present_frame()`] into a single function
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn finish_frame(
 	command_encoder: wgpu::CommandEncoder,
 	surface_tex: wgpu::SurfaceTexture,
@@ -518,7 +518,7 @@ pub fn finish_frame(
 
 
 /// Returns the limits (maximum texture sizes, max bindings per group, etc) for the current gpu
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn get_gpu_limits(gpu_instance: &GpuInstance) -> wgpu::Limits {
 	gpu_instance.wgpu_device.limits()
@@ -534,7 +534,7 @@ pub struct FpsCounter {
 
 impl FpsCounter {
 	/// Creates a new `FpsCounter`
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	#[must_use]
 	pub fn new() -> Self {
 		Self {
@@ -543,7 +543,7 @@ impl FpsCounter {
 		}
 	}
 	/// Notifies the fps counter that a frame has been processed
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	pub fn tick(&mut self) {
 		self.count += 1;
 		let current = Instant::now();
@@ -559,7 +559,7 @@ impl FpsCounter {
 }
 
 impl Default for FpsCounter {
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	fn default() -> Self {
 		Self::new()
 	}

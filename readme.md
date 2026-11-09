@@ -44,7 +44,7 @@ This is a layer over WGPU that is inspired by the simplicity of multimedia libra
   - Finish a render pass with `simple_gpu::finish_render_pass()`
   - Finish the frame with `simple_gpu::finish_frame()` (or call `::submit_gpu_commands()` then `::present_frame()`)
 
-### A few more features of this crate:
+### A few more abilities of this crate:
 
 - Can load files directly into textures
 - Can pack textures into atlases
@@ -73,3 +73,12 @@ See the full api [here](https://docs.rs/simple-gpu/latest/simple_gpu/all.html)
 - The window's surface texture must support an srgb output
 - Vertex input buffers can only be updated by the cpu and read by vertex shaders
 - A whole lot of other boring details (fragment shaders store their outputs, shader files can only have one entry point, etc)
+
+### Crate features:
+
+- `glsl`: enables easy loading of glsl shaders
+- `wgsl`: enables easy loading of wgsl shaders
+- `image`: enables easy creating of textures from image file paths
+- `atlas`: enables easy creating and updating of textures atlases
+- `text`: enables easy text rendering
+- `inline`: enables inlining on almost all functions (this does not guarantee that function will be inlined, it just adds cross-crate inlining as an option for the compiler)

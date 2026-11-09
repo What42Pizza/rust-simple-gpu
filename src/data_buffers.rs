@@ -43,21 +43,21 @@ pub struct GpuBuffer<ItemRawData: bytemuck::Pod> {
 
 impl<ItemRawData: bytemuck::Pod> Deref for GpuBuffer<ItemRawData> {
 	type Target = Vec<ItemRawData>;
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	fn deref(&self) -> &Self::Target {
 		&self.cpu_copy
 	}
 }
 
 impl<ItemRawData: bytemuck::Pod> DerefMut for GpuBuffer<ItemRawData> {
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.cpu_copy
 	}
 }
 
 /// Creates a new buffer of data that can be sent to the gpu. Note: the byte size of the resulting wgpu buffer is `count * size_of::<ItemRawData>()`
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_buffer<ItemRawData: bytemuck::Pod>(
 	name: impl Into<String>,
@@ -85,7 +85,7 @@ pub fn create_buffer<ItemRawData: bytemuck::Pod>(
 }
 
 /// Similar to [`create_buffer()`], but also initializes the buffer with values
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn init_buffer<ItemRawData: bytemuck::Pod>(
 	name: impl Into<String>,
@@ -120,7 +120,7 @@ pub fn init_buffer<ItemRawData: bytemuck::Pod>(
 /// Sends the data in a [`GpuBuffer`]'s cpu-side buffer into its wgpu buffer
 ///
 /// Note: the wgpu buffer is automatically reallocated if it is not large enough
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn sync_buffer<ItemRawData: bytemuck::Pod>(
 	buffer: &mut GpuBuffer<ItemRawData>,
 	gpu_instance: &GpuInstance,
@@ -242,7 +242,7 @@ pub struct UniformsBuffer<UniformsRawData: bytemuck::Pod> {
 }
 
 /// Creates the buffer that stores uniform data
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
 	gpu_instance: &GpuInstance,
@@ -282,7 +282,7 @@ pub fn create_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
 }
 
 /// Updates the uniforms buffer with new data
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn sync_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
 	uniforms_buffer: &UniformsBuffer<UniformsRawData>,
 	gpu_instance: &GpuInstance,

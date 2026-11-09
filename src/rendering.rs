@@ -33,7 +33,7 @@ pub fn get_pipeline_layout<'a>(
 /// # Panics
 ///
 /// The type of the argument `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed items must be the `Some` variant or this will panic.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_2d_pipeline(
 	name: &str,
@@ -58,7 +58,7 @@ pub fn create_2d_pipeline(
 /// # Panics
 ///
 /// The type of the argument is `vertex_buffer_layouts` is `&[Option<wgpu::VertexBufferLayout>]` for compatibility with future versions of wgpu, but all passed items must be the `Some` variant or this will panic.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_3d_pipeline(
 	name: &str,
@@ -158,7 +158,7 @@ pub fn create_pipeline(
 /// Notes:
 /// - For the output textures, you must give a list where each item is a texture view along with an optional clear color
 /// - A render pass can (and should) be reused for multiple draw calls wherever possible
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn start_2d_render_pass<'a>(
 	name: &str,
@@ -200,7 +200,7 @@ pub fn start_2d_render_pass<'a>(
 /// Notes:
 /// - For the output textures, you must give a list where each item is a texture view along with an optional clear color
 /// - A render pass can (and should) be reused for multiple draw calls wherever possible
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn start_3d_render_pass<'a>(
 	name: &str,
@@ -255,7 +255,7 @@ pub fn start_3d_render_pass<'a>(
 /// Finishes a render pass
 ///
 /// This is the same as `drop(render_pass)`, it just has a nicer name
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[allow(unused_variables)]
 #[allow(clippy::needless_pass_by_value)]
 pub fn finish_render_pass(render_pass: wgpu::RenderPass) {}
@@ -268,7 +268,7 @@ pub fn finish_render_pass(render_pass: wgpu::RenderPass) {}
 /// - this works with both 2d and 3d pipelines
 /// - the given texture can be a uniform that is reused for multiple renders
 /// - this assumes that the index buffer is completely full
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn render(
 	render_pass: &mut wgpu::RenderPass,
 	pipeline: &wgpu::RenderPipeline,
@@ -300,7 +300,7 @@ pub fn render(
 
 
 /// Clears a number of targets with given clear colors
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn clear_targets(
 	name: &str,
 	output_textures: &[(&wgpu::TextureView, wgpu::Color)],

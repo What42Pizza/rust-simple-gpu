@@ -19,7 +19,7 @@ pub struct WindowSurface<'a> {
 
 
 /// Updates a surface's size to match the window
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn reconfigure_window_surface(
 	surface: &mut WindowSurface,
 	gpu_instance: &GpuInstance,
@@ -43,7 +43,7 @@ pub enum SurfaceTextureResult {
 }
 
 /// Returns the a output texture that can be used to render to the window
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn get_surface_texture(surface: &WindowSurface) -> SurfaceTextureResult {
 	match surface.wgpu_surface.get_current_texture() {
@@ -64,7 +64,7 @@ pub fn get_surface_texture(surface: &WindowSurface) -> SurfaceTextureResult {
 }
 
 /// Tells the gpu to present the rendered frame when it is ready
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn present_frame(surface_tex: wgpu::SurfaceTexture, _gpu_instance: &GpuInstance) {
 	surface_tex.present();
 	/* This will be needed in future version of wgpu */ //gpu_instance.wgpu_queue.present(surface_tex);
@@ -77,7 +77,7 @@ pub fn present_frame(surface_tex: wgpu::SurfaceTexture, _gpu_instance: &GpuInsta
 /// # Errors
 ///
 /// This returns an error if it fails to retrieve the window handles, and it always returns the mutable window reference.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn get_window_surface_mut<'a, T: HasDisplayHandle + HasWindowHandle>(
 	gpu_instance: &GpuInstance,
 	window: &'a mut T,
@@ -108,7 +108,7 @@ pub fn get_window_surface_mut<'a, T: HasDisplayHandle + HasWindowHandle>(
 /// # Errors
 ///
 /// This returns an error if it fails to retrieve the window handles.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn get_window_surface<'a, T: HasDisplayHandle + HasWindowHandle>(
 	gpu_instance: &GpuInstance,
 	window: &'a T,
@@ -135,7 +135,7 @@ pub fn get_window_surface<'a, T: HasDisplayHandle + HasWindowHandle>(
 /// # Panics
 ///
 /// This panics if the surface does not support any srgb texture formats.
-#[inline]
+#[cfg_attr(feature = "inline", inline)]
 pub fn surface_from_raw_data<'a>(
 	gpu_instance: &GpuInstance,
 	window_handle: WindowHandle<'a>,
@@ -207,14 +207,14 @@ unsafe impl Send for SyncWindowDisplayHandle<'_> {}
 unsafe impl Sync for SyncWindowDisplayHandle<'_> {}
 
 impl<'a> HasWindowHandle for SyncWindowDisplayHandle<'a> {
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	fn window_handle(&self) -> Result<WindowHandle<'a>, HandleError> {
 		Result::Ok(self.window_handle)
 	}
 }
 
 impl<'a> HasDisplayHandle for SyncWindowDisplayHandle<'a> {
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	fn display_handle(&self) -> Result<DisplayHandle<'a>, HandleError> {
 		Result::Ok(self.display_handle)
 	}
@@ -230,7 +230,7 @@ unsafe impl Send for SyncWindowHandle<'_> {}
 unsafe impl Sync for SyncWindowHandle<'_> {}
 
 impl<'a> HasWindowHandle for SyncWindowHandle<'a> {
-	#[inline]
+	#[cfg_attr(feature = "inline", inline)]
 	fn window_handle(&self) -> Result<WindowHandle<'a>, HandleError> {
 		Result::Ok(self.window_handle)
 	}
