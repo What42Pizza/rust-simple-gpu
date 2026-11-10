@@ -45,12 +45,12 @@ atlas = [ "dep:guillotiere" ]
 text = [ "atlas", "dep:swash" ]
 
 [dev-dependencies.sdl3]
-	version = "0.20.*"
+	version = "0.22.*"
 	features = [ "raw-window-handle", "build-from-source" ]
 [dev-dependencies.env_logger]
 	version = "0.11.*"
 [dev-dependencies.glam]
-	version = "0.33.*"
+	version = "0.34.*"
 	features = [ "bytemuck" ]
 [dev-dependencies.log]
 	version = "0.4.*"
