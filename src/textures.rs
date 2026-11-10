@@ -1,4 +1,6 @@
 use crate::GpuInstance;
+#[cfg(doc)]
+use crate::render;
 use anyhow::{Context, Ok, Result, anyhow};
 
 #[cfg(feature = "image")]
@@ -116,28 +118,7 @@ pub fn create_texture(
 		mipmap_bind_groups.push(bind_group);
 	}
 
-	let bind_group = gpu_instance
-		.wgpu_device
-		.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some(&name),
-			layout: &gpu_instance.wgpu_texture_bind_group_layout,
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&view),
-				},
-				wgpu::BindGroupEntry {
-					binding: 1,
-					resource: wgpu::BindingResource::Sampler(
-						if filter_mode == wgpu::FilterMode::Linear {
-							&gpu_instance.wgpu_linear_sampler
-						} else {
-							&gpu_instance.wgpu_nearest_sampler
-						},
-					),
-				},
-			],
-		});
+	let bind_group = create_texture_bind_group(&name, &view, filter_mode, gpu_instance);
 
 	Texture {
 		wgpu_texture: texture,
@@ -153,6 +134,37 @@ pub fn create_texture(
 			name,
 		},
 	}
+}
+
+/// Creates the bind group for a texture, can be passed to [`render()`]
+pub fn create_texture_bind_group(
+	name: impl AsRef<str>,
+	view: &wgpu::TextureView,
+	filter_mode: wgpu::FilterMode,
+	gpu_instance: &GpuInstance,
+) -> wgpu::BindGroup {
+	gpu_instance
+		.wgpu_device
+		.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some(name.as_ref()),
+			layout: &gpu_instance.wgpu_texture_bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::Sampler(
+						if filter_mode == wgpu::FilterMode::Linear {
+							&gpu_instance.wgpu_linear_sampler
+						} else {
+							&gpu_instance.wgpu_nearest_sampler
+						},
+					),
+				},
+			],
+		})
 }
 
 

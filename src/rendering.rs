@@ -1,4 +1,6 @@
 use crate::{GpuBuffer, GpuInstance, Shaders};
+#[cfg(doc)]
+use crate::{Texture, create_texture_bind_group};
 
 
 
@@ -266,8 +268,7 @@ pub fn finish_render_pass(render_pass: wgpu::RenderPass) {}
 ///
 /// Notes:
 /// - this works with both 2d and 3d pipelines
-/// - the given texture can be a uniform that is reused for multiple renders
-/// - this assumes that the index buffer is completely full
+/// - the texture inputs only need the bind groups, which can be taken either from [`Texture::wgpu_bind_group`], or generated using [`create_texture_bind_group()`]
 #[cfg_attr(feature = "inline", inline)]
 pub fn render(
 	render_pass: &mut wgpu::RenderPass,
