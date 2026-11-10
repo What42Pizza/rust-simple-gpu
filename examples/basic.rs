@@ -158,7 +158,7 @@ fn main() -> Result<()> {
 	// textures
 	let textures_path = assets_path.join("textures");
 	let wall_tex = simple_gpu::load_texture_from_path(
-		&textures_path.join("wall.png"),
+		textures_path.join("wall.png"),
 		wgpu::FilterMode::Linear,
 		1,
 		&gpu_instance,

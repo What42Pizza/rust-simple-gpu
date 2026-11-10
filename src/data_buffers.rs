@@ -242,14 +242,20 @@ pub struct UniformsBuffer<UniformsRawData: bytemuck::Pod> {
 }
 
 /// Creates the buffer that stores uniform data
+///
+/// # Panics
+///
+/// This function can panic if an assert fails
 #[cfg_attr(feature = "inline", inline)]
 #[must_use]
 pub fn create_uniforms_buffer<UniformsRawData: bytemuck::Pod>(
 	gpu_instance: &GpuInstance,
 ) -> UniformsBuffer<UniformsRawData> {
-	debug_assert!(
+	#[cfg(feature = "asserts")]
+	assert!(
 		(std::mem::size_of::<UniformsRawData>() as u64).is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
-		"Size of uniforms data MUST be divisible by `wgpu::COPY_BUFFER_ALIGNMENT`, which is {}",
+		"In `simple_gpu::create_uniforms_buffer()`: Size of uniforms data (currently {} bytes) MUST be divisible by `wgpu::COPY_BUFFER_ALIGNMENT`, which is {} bytes",
+		std::mem::size_of::<UniformsRawData>() as u64,
 		wgpu::COPY_BUFFER_ALIGNMENT
 	);
 

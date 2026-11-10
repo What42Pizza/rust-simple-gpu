@@ -35,8 +35,9 @@ categories = [ "multimedia", "rendering", "rendering::graphics-api", "graphics",
 	optional = true
 
 [features]
-default = [ "glsl", "image", "atlas", "text" ]
+default = [ "glsl", "image", "atlas", "text", "asserts" ]
 inline = []
+asserts = []
 glsl = [ "wgpu/glsl" ]
 wgsl = [ "wgpu/wgsl" ]
 image = [ "dep:image" ]

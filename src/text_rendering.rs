@@ -524,6 +524,10 @@ pub fn get_glyph_render_data<'a>(
 
 
 /// Renders queued text using an existing render pass
+///
+/// # Panics
+///
+/// This function can panic if an assert fails
 #[cfg_attr(feature = "inline", inline)]
 pub fn render_queued_text(
 	characters_buffer: &GpuBuffer<GlyphInstanceData>,
@@ -533,15 +537,17 @@ pub fn render_queued_text(
 	text_renderer: &mut TextRenderer,
 	gpu_instance: &mut GpuInstance,
 ) {
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		characters_buffer.len(),
 		characters_buffer.wgpu_buffer_len as usize,
-		"The given character buffer has not been synced, meaning its cpu-side data has not been transferred to the gpu, please call `simple_gpu::sync_buffer()` on the given character buffer before rendering"
+		"In `simple_gpu::render_queued_text()`: The given character buffer has not been synced, meaning its cpu-side data has not been transferred to the gpu, please call `simple_gpu::sync_buffer()` on the given character buffer before rendering"
 	);
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		text_renderer.string_datas_buffer.len(),
 		text_renderer.string_datas_buffer.wgpu_buffer_len as usize,
-		"The text renderer's `string_datas_buffer` field has not been synced, meaning its cpu-side data has not been transferred to the gpu, please call `simple_gpu::sync_buffer(&text_renderer.string_datas_buffer)` before rendering"
+		"In `simple_gpu::render_queued_text()`: The text renderer's `string_datas_buffer` field has not been synced, meaning its cpu-side data has not been transferred to the gpu, please call `simple_gpu::sync_buffer(&text_renderer.string_datas_buffer)` before rendering"
 	);
 
 	let output_size = <[u32; 2]>::from(output_size);

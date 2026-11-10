@@ -82,3 +82,6 @@ See the full api [here](https://docs.rs/simple-gpu/latest/simple_gpu/all.html)
 - `atlas`: enables easy creating and updating of textures atlases
 - `text`: enables easy text rendering
 - `inline`: enables inlining on almost all functions (this does not guarantee that function will be inlined, it just adds cross-crate inlining as an option for the compiler)
+- `asserts`: enables assertions
+
+- Enabled by default: `glsl`, `image`, `atlas`, `text`, `asserts`

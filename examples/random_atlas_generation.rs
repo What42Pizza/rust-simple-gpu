@@ -189,7 +189,7 @@ fn add_to_atlas(
 	simple_gpu::update_texture(atlas_tex, atlas_tex_data, gpu_instance);
 	let mut command_encoder =
 		simple_gpu::start_command_encoder("refill atlas mipmaps", gpu_instance);
-	simple_gpu::refill_mipmaps(atlas_tex, &mut command_encoder, gpu_instance);
+	simple_gpu::regenerate_mipmaps(atlas_tex, &mut command_encoder, gpu_instance);
 	simple_gpu::submit_gpu_commands(command_encoder, gpu_instance);
 }
 

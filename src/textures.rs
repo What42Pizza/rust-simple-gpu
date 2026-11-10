@@ -531,7 +531,7 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 
 		if mip_count > 1 {
 			let mut command_encoder = start_command_encoder("refill_mipmaps", gpu_instance);
-			refill_mipmaps(&atlas_tex, &mut command_encoder, gpu_instance);
+			regenerate_mipmaps(&atlas_tex, &mut command_encoder, gpu_instance);
 			submit_gpu_commands(command_encoder, gpu_instance);
 		}
 
@@ -551,6 +551,10 @@ pub fn create_texture_atlas<Data: AsRef<[u8]>>(
 /// Places a texture's pixel data somewhere inside a texture atlas, increasing the atlas size if needed, and returning the position of the placed element
 ///
 /// The return values are 1: the locations of the placed textures, 2: whether the atlas was resized, and 3: the new size of `atlas_tex_data`
+///
+/// # Panics
+///
+/// This function can panic if an assert fails
 #[must_use]
 #[cfg(feature = "atlas")]
 pub fn place_textures_in_atlas(
@@ -563,7 +567,23 @@ pub fn place_textures_in_atlas(
 ) -> (Vec<AtlasLocation>, bool, (u32, u32)) {
 	use guillotiere::euclid::{Size2D, UnknownUnit};
 
-	debug_assert_eq!(tex_datas.len(), tex_sizes.len());
+	#[cfg(feature = "asserts")]
+	assert_eq!(
+		tex_datas.len(),
+		tex_sizes.len(),
+		"In `simple_gpu::place_textures_in_atlas()`: Length of `tex_datas` and `tex_sizes` must always match"
+	);
+	#[cfg(feature = "asserts")]
+	for (tex_data, tex_size) in tex_datas.iter().zip(tex_sizes) {
+		assert_eq!(
+			tex_data.as_ref().len(),
+			(tex_size.0 * tex_size.1 * bytes_per_pixel) as usize,
+			"In `simple_gpu::place_textures_in_atlas()`: Texture data for one of the textures is not the correct byte size (texture size: {}x{}, {} bytes per pixel)",
+			tex_size.0,
+			tex_size.1,
+			bytes_per_pixel,
+		);
+	}
 
 	let starting_allocator_size = allocator.allocator.size();
 	let mut new_allocator_size = starting_allocator_size;
@@ -640,6 +660,10 @@ pub fn place_textures_in_atlas(
 /// Places a texture's pixel data inside the pixel data of a texture atlas at a specific, with padding for mip mapping
 ///
 /// Note: the `mip_count` value needs to be `Allocator::max_mip + 1` (because a max mip of 0 means there is one mip level)
+///
+/// # Panics
+///
+/// This function can panic if an assert fails
 #[cfg(feature = "atlas")]
 pub fn place_texture_in_atlas_at_pos(
 	tex_data: &[u8],
@@ -651,35 +675,55 @@ pub fn place_texture_in_atlas_at_pos(
 	bytes_per_pixel: u32,
 ) {
 	let max_mip = mip_count - 1;
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		tex_data.len(),
 		(size.0 * size.1 * bytes_per_pixel) as usize,
-		"Texture data is not the correct size"
+		"In `simple_gpu::place_texture_in_atlas_at_pos()`: Texture data is not the correct byte size (texture size: {}x{}, {} bytes per pixel)",
+		size.0,
+		size.1,
+		bytes_per_pixel,
 	);
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		atlas_tex_data.len(),
 		(atlas_tex_size.0 * atlas_tex_size.1 * bytes_per_pixel) as usize,
-		"Atlas texture data is not the correct size"
+		"In `simple_gpu::place_texture_in_atlas_at_pos()`: Atlas texture data is not the correct byte size (atlas texture size: {}x{}, {} bytes per pixel)",
+		atlas_tex_size.0,
+		atlas_tex_size.1,
+		bytes_per_pixel,
 	);
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		pos.0,
 		fit_mip(pos.0, max_mip),
-		"Texture is not positioned on a mip boundary (this is likely due to incorrect usage of the guillotiere allocator)"
+		"In `simple_gpu::place_texture_in_atlas_at_pos()`: Texture placement is not aligned to a mip boundary (this is likely due to incorrect usage of the guillotiere allocator, x position: {}, max mip: {})",
+		pos.0,
+		max_mip,
 	);
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		pos.1,
 		fit_mip(pos.1, max_mip),
-		"Texture is not positioned on a mip boundary (this is likely due to incorrect usage of the guillotiere allocator)"
+		"In `simple_gpu::place_texture_in_atlas_at_pos()`: Texture placement is not aligned to a mip boundary (this is likely due to incorrect usage of the guillotiere allocator), y position: {}, max mip: {})",
+		pos.1,
+		max_mip,
 	);
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		atlas_tex_size.0,
 		atlas_tex_size.0 & (u32::MAX << max_mip),
-		"Atlas size does not line up with the max mip level"
+		"In `simple_gpu::place_texture_in_atlas_at_pos()`: Atlas size does not line up with the max mip level (atlas texture width: {}, max mip: {})",
+		atlas_tex_size.0,
+		max_mip,
 	);
-	debug_assert_eq!(
+	#[cfg(feature = "asserts")]
+	assert_eq!(
 		atlas_tex_size.1,
 		atlas_tex_size.1 & (u32::MAX << max_mip),
-		"Atlas size does not line up with the max mip level"
+		"In `simple_gpu::place_texture_in_atlas_at_pos()`: Atlas size does not line up with the max mip level (atlas texture width: {}, max mip: {})",
+		atlas_tex_size.1,
+		max_mip,
 	);
 
 	let (x, y) = pos;
@@ -744,6 +788,10 @@ pub fn place_texture_in_atlas_at_pos(
 /// Resizes an atlas texture's cpu-side data. Notes:
 /// - The `new_allocator_size` value is the size of the allocator, meaning it is `fit_mip(new_tex_size, max_mip) >> max_mip)`
 /// - The new size cannot be smaller than the old size
+///
+/// # Panics
+///
+/// This function can panic if an assert fails
 #[allow(clippy::uninit_vec)]
 #[cfg(feature = "atlas")]
 pub fn resize_atlas_data(
@@ -753,6 +801,16 @@ pub fn resize_atlas_data(
 	new_size: (u32, u32),
 	blank_fill_value: u8,
 ) {
+	#[cfg(feature = "asserts")]
+	assert_eq!(
+		atlas_data.len(),
+		(old_size.0 * old_size.1 * bytes_per_pixel) as usize,
+		"In `simple_gpu::resize_atlas_data()`: Atlas texture data is not the correct byte size (atlas texture size: {}x{}, {} bytes per pixel)",
+		old_size.0,
+		old_size.1,
+		bytes_per_pixel,
+	);
+
 	let (old_size, new_size) = (
 		(old_size.0 as usize, old_size.1 as usize),
 		(new_size.0 as usize, new_size.1 as usize),
@@ -819,7 +877,7 @@ pub const fn fit_mip(v: u32, max_mip: u32) -> u32 {
 pub fn create_texture_atlas_from_path(
 	name: &str,
 	path: impl AsRef<Path>,
-	recursive: bool,
+	walk_folders: bool,
 	filter_mode: wgpu::FilterMode,
 	mip_count: u32,
 	fill_value: u8,
@@ -839,20 +897,22 @@ pub fn create_texture_atlas_from_path(
 		};
 		let curr_path = curr_path.path();
 
-		if recursive {
-			for child in std::fs::read_dir(&curr_path).with_context(|| {
-				format!(
-					"Failed to read contents of folder at {}",
-					curr_path.display()
-				)
-			})? {
-				paths.push(child?);
+		if curr_path.is_dir() {
+			if walk_folders {
+				for child in std::fs::read_dir(&curr_path).with_context(|| {
+					format!(
+						"Failed to read contents of folder at {}",
+						curr_path.display()
+					)
+				})? {
+					paths.push(child?);
+				}
 			}
+		} else {
+			let image = image::open(&curr_path)?;
+			textures.push((image.width(), image.height(), image.to_rgba8().into_raw()));
+			texture_paths.push(curr_path);
 		}
-
-		let image = image::open(&curr_path)?;
-		textures.push((image.width(), image.height(), image.to_rgba8().into_raw()));
-		texture_paths.push(curr_path);
 	}
 
 	let CreatedAtlasResult {
@@ -909,7 +969,7 @@ pub fn make_sampler(
 
 /// Regenerates the mipmap data for a texture
 #[cfg_attr(feature = "inline", inline)]
-pub fn refill_mipmaps(
+pub fn regenerate_mipmaps(
 	texture: &Texture,
 	command_encoder: &mut wgpu::CommandEncoder,
 	gpu_instance: &mut GpuInstance,
