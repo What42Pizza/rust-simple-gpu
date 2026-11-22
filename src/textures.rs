@@ -1,6 +1,6 @@
-use crate::GpuInstance;
 #[cfg(doc)]
 use crate::render;
+use crate::{GpuInstance, Shaders};
 use anyhow::{Context, Ok, Result, anyhow};
 
 #[cfg(feature = "image")]
@@ -24,12 +24,15 @@ pub struct Texture {
 	pub wgpu_texture: wgpu::Texture,
 	/// Can be given to bind groups, which are then bound to the render pipeline. More:
 	///
-	/// Note: this can be used within shaders to see all mipmap levels
+	/// - This can be used within shaders to see all mipmap levels
+	/// - If you want to render to this texture and the texture has multiple mipmap levels, you need to render to `self.wgpu_mipmap_views[0]`
 	pub wgpu_view: wgpu::TextureView,
 	/// This is a bind group with just one binding, which is a view to this texture. The layout for this is taken from [`GpuInstance::wgpu_texture_bind_group_layout`]
 	pub wgpu_bind_group: wgpu::BindGroup,
 	/// Similar to `wgpu_view`, but contains one view for each mipmap level This is not needed for most operations and is only used for refilling mipmaps
 	pub wgpu_mipmap_views: Vec<wgpu::TextureView>,
+	/// The shaders used for generating mipmap. If you want to use custom shaders here, you just overwrite this field, and you can easily find the default mipmap shaders in the crate's repo. NOTE: the shader needs to fully overwrite the target or else it will be undefined
+	pub wgpu_mipmap_shaders: Shaders,
 	/// Similar to `wgpu_bind_group`, but contains corresponding views from `wgpu_mipmap_view`. This is not needed for most operations and is only used for refilling mipmaps
 	pub wgpu_mipmap_bind_groups: Vec<wgpu::BindGroup>,
 	/// Miscellaneous settings that the texture (and its bind groups) was created with
@@ -126,6 +129,7 @@ pub fn create_texture(
 		wgpu_bind_group: bind_group,
 		wgpu_mipmap_views: mipmap_views,
 		wgpu_mipmap_bind_groups: mipmap_bind_groups,
+		wgpu_mipmap_shaders: gpu_instance.wgpu_mipmap_shaders.clone(),
 		settings: TextureSettings {
 			size,
 			pixel_format: format,
@@ -986,10 +990,15 @@ pub fn regenerate_mipmaps(
 	command_encoder: &mut wgpu::CommandEncoder,
 	gpu_instance: &mut GpuInstance,
 ) {
-	if texture.settings.mip_count < 2 {
+	if texture.settings.mip_count == 1 {
 		return;
 	}
-	let pipeline = get_mipmap_pipeline(texture.settings.pixel_format, gpu_instance);
+	let pipeline = get_mipmap_pipeline(
+		texture.settings.pixel_format,
+		texture.wgpu_mipmap_shaders.vertex(),
+		texture.wgpu_mipmap_shaders.fragment(),
+		gpu_instance,
+	);
 	let dont_load = unsafe { wgpu::LoadOpDontCare::enabled() }; // safety: the entire output will be overwritten without blending
 
 	for i in 1..texture.settings.mip_count {
@@ -1019,25 +1028,31 @@ pub fn regenerate_mipmaps(
 /// Returns the pipeline needed for rendering a texture's mipmaps
 #[cfg_attr(feature = "inline", inline)]
 #[must_use]
-pub fn get_mipmap_pipeline(
+pub fn get_mipmap_pipeline<'a>(
 	texture_format: wgpu::TextureFormat,
-	gpu_instance: &mut GpuInstance,
-) -> &wgpu::RenderPipeline {
+	vertex_shader: &wgpu::ShaderModule,
+	fragment_shader: &wgpu::ShaderModule,
+	gpu_instance: &'a mut GpuInstance,
+) -> &'a wgpu::RenderPipeline {
 	gpu_instance
 		.wgpu_mipmap_pipelines
-		.entry(texture_format)
+		.entry((
+			texture_format,
+			vertex_shader.clone(),
+			fragment_shader.clone(),
+		))
 		.or_insert_with(|| {
 			let desc = wgpu::RenderPipelineDescriptor {
 				label: Some("mipmap_pipeline"),
 				layout: Some(&gpu_instance.wgpu_mipmap_pipeline_layout),
 				vertex: wgpu::VertexState {
-					module: gpu_instance.wgpu_mipmap_shaders.vertex(),
+					module: vertex_shader,
 					entry_point: None,
 					buffers: &[],
 					compilation_options: wgpu::PipelineCompilationOptions::default(),
 				},
 				fragment: Some(wgpu::FragmentState {
-					module: gpu_instance.wgpu_mipmap_shaders.fragment(),
+					module: fragment_shader,
 					entry_point: None,
 					targets: &[Some(wgpu::ColorTargetState {
 						format: texture_format,

@@ -275,12 +275,12 @@ pub fn render(
 	pipeline: &wgpu::RenderPipeline,
 	vertex_buffers: &[&wgpu::Buffer],
 	index_buffer: Option<&GpuBuffer<u16>>,
-	textures: &[&wgpu::BindGroup],
+	textures_binds: &[&wgpu::BindGroup],
 	vertex_count: u32,
 	instance_count: u32,
 ) {
 	render_pass.set_pipeline(pipeline);
-	for (i, texture_group) in textures.iter().enumerate() {
+	for (i, texture_group) in textures_binds.iter().enumerate() {
 		render_pass.set_bind_group(i as u32 + 1, *texture_group, &[]);
 	}
 

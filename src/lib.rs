@@ -138,7 +138,10 @@ pub struct GpuInstance {
 	/// These are the shaders used for mipmap generation
 	pub wgpu_mipmap_shaders: Shaders,
 	/// This is the pipeline used for mipmap generation
-	pub wgpu_mipmap_pipelines: HashMap<wgpu::TextureFormat, wgpu::RenderPipeline>,
+	pub wgpu_mipmap_pipelines: HashMap<
+		(wgpu::TextureFormat, wgpu::ShaderModule, wgpu::ShaderModule),
+		wgpu::RenderPipeline,
+	>,
 
 	/// The layout for the text render wgpu pipeline's bind groups
 	#[cfg(feature = "text")]
